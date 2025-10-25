@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export type MessageType = 'user_message' | 'assistant_message' | 'system_message' | 'generate_document' | 'generation_complete' | 'switch_conversation' | 'conversation_switched';
+export type MessageType = 'user_message' | 'assistant_message' | 'system_message' | 'generate_document' | 'generation_complete' | 'switch_conversation' | 'conversation_switched' | 'stop_generation';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';

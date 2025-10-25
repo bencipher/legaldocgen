@@ -187,13 +187,39 @@ export const AssistantPage = ({
         description: 'Successfully connected to the assistant.',
         duration: 2000,
       });
+      
+      // If we were generating content before disconnection, try to resume
+      if (isGenerating && documentContent) {
+        toast({
+          title: 'Resuming Generation',
+          description: 'Attempting to continue document generation...',
+          duration: 3000,
+        });
+        
+        // Send a resume message to continue generation
+        setTimeout(() => {
+          sendMessage({
+            type: 'user_message',
+            content: 'Please continue the document generation from where we left off.',
+            conversation_id: currentConversationId
+          });
+        }, 1000);
+      }
     },
     onClose: () => {
       toast({
         title: 'Disconnected',
-        description: 'Connection to the assistant was lost.',
+        description: 'Connection lost. Will attempt to reconnect...',
         variant: 'destructive',
         duration: 3000,
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Connection Error',
+        description: 'WebSocket connection failed. Retrying...',
+        variant: 'destructive',
+        duration: 2000,
       });
     },
   });
@@ -218,6 +244,19 @@ export const AssistantPage = ({
       content,
       conversation_id: currentConversationId, // Add conversation ID
     });
+  };
+
+  const handleStopGeneration = () => {
+    // Send stop signal to backend
+    sendMessage({
+      type: 'stop_generation',
+      conversation_id: currentConversationId,
+    });
+    
+    // Reset frontend state
+    setIsGenerating(false);
+    setIsGenerationStarting(false);
+    setStreamingMessage(null);
   };
 
   // Apply theme
@@ -268,31 +307,31 @@ export const AssistantPage = ({
         />
 
         {/* Main Content */}
-        <div className="flex flex-col flex-1 h-screen">
+        <div className="flex flex-col flex-1 h-screen min-w-0 overflow-hidden">
           {/* Header */}
           <header className="border-b border-border bg-card shadow-soft">
-            <div className="px-6 py-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+            <div className="px-4 sm:px-6 py-3 sm:py-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-lg sm:text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent truncate">
                     {projectName}
                   </h1>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <p className="text-xs sm:text-sm text-muted-foreground mt-1 truncate">
                     {conversations.find(c => c.id === currentConversationId)?.title || 'New Conversation'}
                   </p>
                 </div>
 
                 {/* Connection Status and Clear Button */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                   {isConnected ? (
-                    <div className="flex items-center gap-2 text-accent">
-                      <Wifi className="w-5 h-5" />
-                      <span className="text-sm font-medium">Connected</span>
+                    <div className="flex items-center gap-1 sm:gap-2 text-accent">
+                      <Wifi className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">Connected</span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 text-destructive">
-                      <WifiOff className="w-5 h-5" />
-                      <span className="text-sm font-medium">
+                    <div className="flex items-center gap-1 sm:gap-2 text-destructive">
+                      <WifiOff className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">
                         {isReconnecting ? 'Reconnecting...' : 'Disconnected'}
                       </span>
                     </div>
@@ -301,19 +340,20 @@ export const AssistantPage = ({
                   <Button
                     variant="outline"
                     onClick={handleClearSession}
-                    className="gap-2"
+                    className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-2"
+                    size="sm"
                   >
-                    <Trash2 className="w-4 h-4" />
-                    Clear Session
+                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Clear Session</span>
                   </Button>
                 </div>
               </div>
 
               {/* Tabs */}
-              <div className="flex gap-1 mt-6">
+              <div className="flex gap-1 mt-4 sm:mt-6">
                 <button
                   onClick={() => setActiveTab('chat')}
-                  className={`px-6 py-3 rounded-t-lg font-medium transition-all duration-300 ${
+                  className={`flex-1 sm:flex-initial px-3 sm:px-6 py-2 sm:py-3 rounded-t-lg font-medium transition-all duration-300 text-sm sm:text-base ${
                     activeTab === 'chat'
                       ? 'bg-background text-foreground shadow-soft'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -323,15 +363,15 @@ export const AssistantPage = ({
                 </button>
                 <button
                   onClick={() => setActiveTab('preview')}
-                  className={`px-6 py-3 rounded-t-lg font-medium transition-all duration-300 ${
+                  className={`flex-1 sm:flex-initial px-3 sm:px-6 py-2 sm:py-3 rounded-t-lg font-medium transition-all duration-300 text-sm sm:text-base ${
                     activeTab === 'preview'
                       ? 'bg-background text-foreground shadow-soft'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   }`}
                 >
-                  Document Preview
+                  <span className="hidden sm:inline">Document </span>Preview
                   {(isGenerating || isGenerationStarting) && (
-                    <span className="ml-2 inline-block w-2 h-2 bg-accent rounded-full animate-pulse-glow" />
+                    <span className="ml-1 sm:ml-2 inline-block w-2 h-2 bg-accent rounded-full animate-pulse-glow" />
                   )}
                 </button>
               </div>
@@ -353,9 +393,12 @@ export const AssistantPage = ({
                   <ChatWindow
                     messages={messages}
                     onSendMessage={handleSendMessage}
+                    onStopGeneration={handleStopGeneration}
                     isConnected={isConnected}
                     streamingMessage={streamingMessage}
                     isGenerating={isGenerating}
+                    documentContent={documentContent}
+                    isReconnecting={isReconnecting}
                   />
                 </motion.div>
               ) : (

@@ -329,43 +329,47 @@ export const ExportButtons = ({ content, isGenerating, onBackToChat }: ExportBut
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
       <Button
         variant="outline"
         onClick={onBackToChat}
-        className="gap-2"
+        className="gap-1 sm:gap-2 text-xs sm:text-sm"
+        size="sm"
       >
-        <ArrowLeft className="w-4 h-4" />
-        Back to Chat
+        <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4" />
+        <span className="hidden sm:inline">Back to </span>Chat
       </Button>
       
       <Button
         variant="outline"
         onClick={handleExportMarkdown}
         disabled={!content || isGenerating}
-        className="gap-2"
+        className="gap-1 sm:gap-2 text-xs sm:text-sm"
+        size="sm"
       >
-        <FileText className="w-4 h-4" />
-        Export Markdown
+        <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
+        <span className="hidden sm:inline">Export </span>Markdown
       </Button>
       
       <Button
         variant="outline"
         onClick={handleExportHTML}
         disabled={!content || isGenerating}
-        className="gap-2"
+        className="gap-1 sm:gap-2 text-xs sm:text-sm"
+        size="sm"
       >
-        <FileText className="w-4 h-4" />
-        Export HTML
+        <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
+        <span className="hidden sm:inline">Export </span>HTML
       </Button>
 
       <Button
         onClick={handleExportPDF}
         disabled={!content || isGenerating}
-        className="gap-2 bg-gradient-primary hover:shadow-glow transition-all duration-300"
+        className="gap-1 sm:gap-2 bg-gradient-primary hover:shadow-glow transition-all duration-300 text-xs sm:text-sm"
+        size="sm"
       >
-        <Download className="w-4 h-4" />
-        Export PDF
+        <Download className="w-3 h-3 sm:w-4 sm:h-4" />
+        <span className="hidden sm:inline">Export </span>PDF
       </Button>
     </div>
   );

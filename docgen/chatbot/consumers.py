@@ -51,6 +51,8 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
         elif msg_type == "switch_conversation":
             # Handle conversation switching
             await self.send_json({"type": "conversation_switched", "conversation_id": conversation_id})
+        elif msg_type == "stop_generation":
+            await self.handle_stop_generation()
 
     def get_current_orchestrator(self):
         """Get the orchestrator for the current conversation."""
@@ -264,6 +266,19 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
                 line_count += 1
 
         return '\n'.join(paginated_lines)
+
+    async def handle_stop_generation(self):
+        """Handle stop generation request from frontend."""
+        orchestrator = self.get_current_orchestrator()
+        
+        # Reset orchestrator state
+        orchestrator.state = "idle"
+        
+        # Send confirmation to frontend
+        await self.send_json({
+            "type": "system_message", 
+            "content": "🛑 Document generation stopped by user."
+        })
 
     async def disconnect(self, close_code):
         """Handle client disconnects gracefully."""

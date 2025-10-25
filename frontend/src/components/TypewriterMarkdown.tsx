@@ -119,15 +119,15 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 50 }: Typewri
     <div className="w-full">
       {/* Page Header */}
       {isPaginated && (
-        <div className="flex items-center justify-between mb-4 p-3 bg-muted/50 rounded-lg border page-indicator">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            <span className="text-sm font-medium">Document Preview</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 sm:mb-4 p-2 sm:p-3 bg-muted/50 rounded-lg border page-indicator gap-2 sm:gap-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+            <span className="text-xs sm:text-sm font-medium truncate">Document Preview</span>
             {isStreaming && (
-              <span className="text-xs text-accent font-medium animate-pulse">● Live Generation</span>
+              <span className="text-xs text-accent font-medium animate-pulse hidden sm:inline">● Live Generation</span>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3">
             <Badge variant="outline" className="text-xs">
               Page {currentPage + 1} of {pages.length}
             </Badge>
@@ -137,18 +137,18 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 50 }: Typewri
                 size="sm"
                 onClick={prevPage}
                 disabled={currentPage === 0}
-                className="h-8 w-8 p-0"
+                className="h-6 w-6 sm:h-8 sm:w-8 p-0"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={nextPage}
                 disabled={currentPage === pages.length - 1}
-                className="h-8 w-8 p-0"
+                className="h-6 w-6 sm:h-8 sm:w-8 p-0"
               >
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
               </Button>
             </div>
           </div>
@@ -167,62 +167,63 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 50 }: Typewri
                      prose-pre:bg-muted prose-pre:border
                      prose-table:text-sm prose-th:bg-muted
                      prose-hr:border-border
-                     bg-card p-6 rounded-lg border shadow-sm
-                     min-h-[600px] page-content"
+                     bg-card p-3 sm:p-6 rounded-lg border shadow-sm
+                     min-h-[400px] sm:min-h-[600px] page-content
+                     prose-sm sm:prose-base"
         >
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
               // Custom styling for various markdown elements
               h1: ({ children }) => (
-                <h1 className="text-3xl font-bold mb-6 pb-2 border-b border-border">
+                <h1 className="text-xl sm:text-3xl font-bold mb-4 sm:mb-6 pb-2 border-b border-border">
                   {children}
                 </h1>
               ),
               h2: ({ children }) => (
-                <h2 className="text-2xl font-semibold mt-8 mb-4 text-primary">
+                <h2 className="text-lg sm:text-2xl font-semibold mt-6 sm:mt-8 mb-3 sm:mb-4 text-primary">
                   {children}
                 </h2>
               ),
               h3: ({ children }) => (
-                <h3 className="text-xl font-medium mt-6 mb-3">
+                <h3 className="text-base sm:text-xl font-medium mt-4 sm:mt-6 mb-2 sm:mb-3">
                   {children}
                 </h3>
               ),
               p: ({ children }) => (
-                <p className="mb-4 leading-relaxed text-foreground">
+                <p className="mb-3 sm:mb-4 leading-relaxed text-foreground text-sm sm:text-base">
                   {children}
                 </p>
               ),
               ul: ({ children }) => (
-                <ul className="mb-4 ml-6 list-disc space-y-2">
+                <ul className="mb-3 sm:mb-4 ml-4 sm:ml-6 list-disc space-y-1 sm:space-y-2">
                   {children}
                 </ul>
               ),
               ol: ({ children }) => (
-                <ol className="mb-4 ml-6 list-decimal space-y-2">
+                <ol className="mb-3 sm:mb-4 ml-4 sm:ml-6 list-decimal space-y-1 sm:space-y-2">
                   {children}
                 </ol>
               ),
               blockquote: ({ children }) => (
-                <blockquote className="border-l-4 border-primary bg-muted/50 pl-4 py-2 my-4 italic">
+                <blockquote className="border-l-4 border-primary bg-muted/50 pl-3 sm:pl-4 py-2 my-3 sm:my-4 italic text-sm sm:text-base">
                   {children}
                 </blockquote>
               ),
               table: ({ children }) => (
-                <div className="overflow-x-auto my-6">
-                  <table className="w-full border-collapse border border-border rounded-lg">
+                <div className="overflow-x-auto my-4 sm:my-6">
+                  <table className="w-full border-collapse border border-border rounded-lg text-xs sm:text-sm">
                     {children}
                   </table>
                 </div>
               ),
               th: ({ children }) => (
-                <th className="border border-border bg-muted px-4 py-2 text-left font-semibold">
+                <th className="border border-border bg-muted px-2 sm:px-4 py-1 sm:py-2 text-left font-semibold text-xs sm:text-sm">
                   {children}
                 </th>
               ),
               td: ({ children }) => (
-                <td className="border border-border px-4 py-2">
+                <td className="border border-border px-2 sm:px-4 py-1 sm:py-2 text-xs sm:text-sm">
                   {children}
                 </td>
               )

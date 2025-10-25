@@ -3,13 +3,6 @@ import { AssistantPage } from '@/components/AssistantPage';
 // Environment-based configuration
 const getWebSocketUrl = () => {
   const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
-  console.log('Environment check:', {
-    VITE_WS_URL: import.meta.env.VITE_WS_URL,
-    VITE_API_URL: import.meta.env.VITE_API_URL,
-    VITE_APP_NAME: import.meta.env.VITE_APP_NAME,
-    NODE_ENV: import.meta.env.NODE_ENV,
-    finalWsUrl: `${wsUrl}/ws/assistant/`
-  });
   return `${wsUrl}/ws/assistant/`;
 };
 
