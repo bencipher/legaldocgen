@@ -270,15 +270,12 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
     async def handle_stop_generation(self):
         """Handle stop generation request from frontend."""
         orchestrator = self.get_current_orchestrator()
-        
+
         # Reset orchestrator state
         orchestrator.state = "idle"
-        
+
         # Send confirmation to frontend
-        await self.send_json({
-            "type": "system_message", 
-            "content": "🛑 Document generation stopped by user."
-        })
+        await self.send_json({"type": "system_message", "content": "🛑 Document generation stopped by user."})
 
     async def disconnect(self, close_code):
         """Handle client disconnects gracefully."""

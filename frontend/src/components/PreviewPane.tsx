@@ -80,7 +80,7 @@ export const PreviewPane = ({ content, isGenerating, isGenerationStarting = fals
               <TypewriterMarkdown 
                 content={content} 
                 isStreaming={isGenerating}
-                speed={100}
+                speed={400}
               />
             </Suspense>
           </motion.div>

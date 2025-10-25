@@ -55,7 +55,7 @@ export const MessageBubble = ({ message, index, isTyping = false, onTypingComple
           {isTyping && message.role === 'assistant' ? (
             <TypewriterText 
               text={message.content}
-              speed={80}
+              speed={100}
               onComplete={onTypingComplete}
             />
           ) : (
