@@ -1,0 +1,26 @@
+# Core Dependencies
+Django>=4.2
+channels>=4.0
+pydantic-ai>=1.2.1
+uvicorn>=0.38.0
+gunicorn>=23.0.0
+
+# Database
+psycopg2-binary>=2.9.9
+dj-database-url>=3.0.1
+
+# CORS and Security
+django-cors-headers>=4.4.0
+whitenoise>=6.8.2
+
+# Environment
+python-decouple>=3.8
+python-dotenv>=1.0.0
+
+# ASGI Server
+daphne>=4.1.2
+
+# Optional (for advanced features)
+weasyprint>=66.0
+markdown2>=2.5.4
+retry>=0.9.2

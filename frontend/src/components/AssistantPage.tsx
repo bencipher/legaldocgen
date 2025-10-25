@@ -1,0 +1,390 @@
+import { useState, useEffect, lazy, Suspense } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useWebSocket, Message, WebSocketMessage } from '@/hooks/useWebSocket';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { ChatWindow } from './ChatWindow';
+import { ConversationHistorySidebar } from './ConversationHistorySidebar';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { Button } from '@/components/ui/button';
+import { Wifi, WifiOff, Trash2 } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
+
+// Lazy load the heavy PreviewPane component
+const PreviewPane = lazy(() => import('./PreviewPane').then(module => ({ default: module.PreviewPane })));
+
+interface AssistantPageProps {
+  wsUrl: string;
+  userId: string;
+  projectName: string;
+  theme?: 'light' | 'dark';
+  onDocumentGenerated?: (html: string) => void;
+}
+
+type TabType = 'chat' | 'preview';
+
+export const AssistantPage = ({
+  wsUrl,
+  userId,
+  projectName,
+  theme = 'light',
+  onDocumentGenerated,
+}: AssistantPageProps) => {
+  const [activeTab, setActiveTab] = useState<TabType>('chat');
+  const [documentContent, setDocumentContent] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGenerationStarting, setIsGenerationStarting] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
+  const [currentConversationId, setCurrentConversationId] = useState('default');
+  const { messages, addMessage, clearMessages } = useLocalStorage(userId, currentConversationId);
+  
+  // Conversation management
+  const [conversations, setConversations] = useState<Array<{id: string, title: string, timestamp: number}>>([]);
+
+  const generateConversationTitle = (firstMessage: string): string => {
+    // Extract key words from first message to create title
+    const words = firstMessage.toLowerCase().split(' ').filter(word => 
+      ['agreement', 'contract', 'lease', 'rental', 'employment', 'nda', 'privacy', 'terms', 'service'].includes(word)
+    );
+    if (words.length > 0) {
+      return words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') + ' Document';
+    }
+    // Fallback to first few words
+    return firstMessage.split(' ').slice(0, 3).join(' ') + (firstMessage.split(' ').length > 3 ? '...' : '');
+  };
+
+  const handleNewConversation = () => {
+    const newId = `conversation-${Date.now()}`;
+    setCurrentConversationId(newId);
+    clearMessages(); // This will clear messages for the current conversation
+    setDocumentContent('');
+    setIsGenerating(false);
+    setIsGenerationStarting(false);
+    setStreamingMessage(null);
+    setActiveTab('chat');
+    
+    // Don't add to conversations list until first message is sent
+    toast({
+      title: 'New Conversation',
+      description: 'Started a new conversation.',
+    });
+  };
+
+  const handleClearSession = () => {
+    clearMessages();
+    setDocumentContent('');
+    setIsGenerating(false);
+    setIsGenerationStarting(false);
+    setStreamingMessage(null);
+    setActiveTab('chat');
+    toast({
+      title: 'Session Cleared',
+      description: 'All messages and generated content have been cleared.',
+    });
+  };
+
+  const handleWebSocketMessage = (data: WebSocketMessage) => {
+    switch (data.type) {
+      case 'user_message':
+        if (data.content) {
+          addMessage({ role: 'user', content: data.content });
+        }
+        break;
+
+      case 'assistant_message':
+        if (data.content) {
+          addMessage({ role: 'assistant', content: data.content });
+          
+          // Check if this message indicates generation is about to start
+          if (data.content.includes('Generating your document') || 
+              data.content.includes('I have all the info I need')) {
+            setIsGenerationStarting(true);
+            setActiveTab('preview');
+            
+            // Show starting animation for a moment
+            setTimeout(() => {
+              setIsGenerationStarting(false);
+            }, 2000);
+          }
+        }
+        break;
+
+      case 'system_message':
+        // Don't add system messages to chat - they clutter the interface
+        // Connection status is already shown in the header
+        break;
+
+      case 'generate_document': {
+        setIsGenerating(true);
+        if (data.chunk) {
+          setDocumentContent((prev) => prev + data.chunk);
+          
+          // Create or update streaming message for typewriter effect
+          if (!streamingMessage) {
+            const newStreamingMessage: Message = {
+              role: 'assistant',
+              content: data.chunk,
+              timestamp: Date.now()
+            };
+            setStreamingMessage(newStreamingMessage);
+          } else {
+            setStreamingMessage(prev => prev ? {
+              ...prev,
+              content: prev.content + data.chunk
+            } : null);
+          }
+        }
+        break;
+      }
+
+      case 'generation_complete': {
+        setIsGenerating(false);
+        
+        // Add the complete document as a final message
+        if (streamingMessage) {
+          addMessage(streamingMessage);
+          setStreamingMessage(null);
+        }
+        
+        // Update with final document if provided
+        if (data.full_document) {
+          setDocumentContent(data.full_document);
+        }
+        
+        // Check if document seems incomplete for user feedback
+        const finalContent = data.full_document || documentContent;
+        const isIncomplete = finalContent.length < 5000 || // Less than ~5 pages
+                            !finalContent.toLowerCase().includes('signature') ||
+                            finalContent.trim().endsWith('...');
+        
+        if (isIncomplete) {
+          toast({
+            title: 'Document Generated',
+            description: 'Document completed. If it seems incomplete, you can type "continue" to extend it.',
+            duration: 5000,
+          });
+        } else {
+          toast({
+            title: 'Document Generated',
+            description: 'Your comprehensive document is ready for review and export.',
+          });
+        }
+        
+        if (documentContent) {
+          onDocumentGenerated?.(documentContent);
+        }
+        break;
+      }
+    }
+  };
+
+  const { isConnected, isReconnecting, sendMessage } = useWebSocket({
+    url: wsUrl,
+    onMessage: handleWebSocketMessage,
+    onOpen: () => {
+      // Show toast only briefly, don't clutter chat
+      toast({
+        title: 'Connected',
+        description: 'Successfully connected to the assistant.',
+        duration: 2000,
+      });
+    },
+    onClose: () => {
+      toast({
+        title: 'Disconnected',
+        description: 'Connection to the assistant was lost.',
+        variant: 'destructive',
+        duration: 3000,
+      });
+    },
+  });
+
+  const handleSendMessage = (content: string) => {
+    const message: Message = { role: 'user', content };
+    addMessage(message);
+    
+    // If this is the first message in the current conversation, create conversation entry
+    if (messages.length === 0 && !conversations.some(c => c.id === currentConversationId)) {
+      const title = generateConversationTitle(content);
+      const newConversation = {
+        id: currentConversationId,
+        title,
+        timestamp: Date.now(),
+      };
+      setConversations(prev => [...prev, newConversation]);
+    }
+    
+    sendMessage({
+      type: 'user_message',
+      content,
+      conversation_id: currentConversationId, // Add conversation ID
+    });
+  };
+
+  // Apply theme
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+
+  return (
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full bg-background">
+        {/* Conversation History Sidebar */}
+        <ConversationHistorySidebar
+          conversations={conversations}
+          activeConversationId={currentConversationId}
+          onSelectConversation={(id) => {
+            setCurrentConversationId(id);
+            // Reset all states when switching conversations
+            setDocumentContent('');
+            setIsGenerating(false);
+            setIsGenerationStarting(false);
+            setStreamingMessage(null);
+            setActiveTab('chat');
+            
+            // Notify backend about conversation switch
+            sendMessage({
+              type: 'switch_conversation',
+              conversation_id: id,
+            });
+            
+            toast({
+              title: 'Conversation Selected',
+              description: `Switched to conversation`,
+              duration: 1500,
+            });
+          }}
+          onDeleteConversation={(id) => {
+            setConversations(conversations.filter((c) => c.id !== id));
+            // If deleting current conversation, create new one
+            if (id === currentConversationId) {
+              handleNewConversation();
+            }
+            toast({
+              title: 'Conversation Deleted',
+              description: 'Conversation has been removed.',
+            });
+          }}
+          onNewConversation={handleNewConversation}
+        />
+
+        {/* Main Content */}
+        <div className="flex flex-col flex-1 h-screen">
+          {/* Header */}
+          <header className="border-b border-border bg-card shadow-soft">
+            <div className="px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+                    {projectName}
+                  </h1>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {conversations.find(c => c.id === currentConversationId)?.title || 'New Conversation'}
+                  </p>
+                </div>
+
+                {/* Connection Status and Clear Button */}
+                <div className="flex items-center gap-4">
+                  {isConnected ? (
+                    <div className="flex items-center gap-2 text-accent">
+                      <Wifi className="w-5 h-5" />
+                      <span className="text-sm font-medium">Connected</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-destructive">
+                      <WifiOff className="w-5 h-5" />
+                      <span className="text-sm font-medium">
+                        {isReconnecting ? 'Reconnecting...' : 'Disconnected'}
+                      </span>
+                    </div>
+                  )}
+                  
+                  <Button
+                    variant="outline"
+                    onClick={handleClearSession}
+                    className="gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Clear Session
+                  </Button>
+                </div>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex gap-1 mt-6">
+                <button
+                  onClick={() => setActiveTab('chat')}
+                  className={`px-6 py-3 rounded-t-lg font-medium transition-all duration-300 ${
+                    activeTab === 'chat'
+                      ? 'bg-background text-foreground shadow-soft'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  Chat
+                </button>
+                <button
+                  onClick={() => setActiveTab('preview')}
+                  className={`px-6 py-3 rounded-t-lg font-medium transition-all duration-300 ${
+                    activeTab === 'preview'
+                      ? 'bg-background text-foreground shadow-soft'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  Document Preview
+                  {(isGenerating || isGenerationStarting) && (
+                    <span className="ml-2 inline-block w-2 h-2 bg-accent rounded-full animate-pulse-glow" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Content Area */}
+          <div className="flex-1 overflow-hidden">
+            <AnimatePresence mode="wait">
+              {activeTab === 'chat' ? (
+                <motion.div
+                  key="chat"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="h-full"
+                >
+                  <ChatWindow
+                    messages={messages}
+                    onSendMessage={handleSendMessage}
+                    isConnected={isConnected}
+                    streamingMessage={streamingMessage}
+                    isGenerating={isGenerating}
+                  />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="preview"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.3 }}
+                  className="h-full"
+                >
+                  <Suspense fallback={
+                    <div className="flex items-center justify-center h-full">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    </div>
+                  }>
+                    <PreviewPane
+                      content={documentContent}
+                      isGenerating={isGenerating}
+                      isGenerationStarting={isGenerationStarting}
+                      onBackToChat={() => setActiveTab('chat')}
+                    />
+                  </Suspense>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+};
