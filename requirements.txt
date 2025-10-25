@@ -4,6 +4,7 @@ channels>=4.0
 pydantic-ai>=1.2.1
 uvicorn>=0.38.0
 gunicorn>=23.0.0
+langchain>=1.0.2
 
 # Database
 psycopg2-binary>=2.9.9
