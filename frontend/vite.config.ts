@@ -1,19 +1,34 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
 // https://vitejs.dev/config/
-export default defineConfig(() => ({
-  server: {
-    host: "::",
-    port: 8080,
-  },
-  plugins: [react()],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+export default defineConfig(({ mode }) => {
+  // Load env file from parent directory for local development
+  // In production (Vercel), environment variables come from dashboard
+  const parentEnv = loadEnv(mode, path.resolve(__dirname, '..'), '');
+  
+  return {
+    server: {
+      host: "::",
+      port: 8080,
     },
-  },
+    plugins: [react()],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
+    // Only define environment variables for local development
+    // In production, Vite automatically picks up VITE_* variables from process.env
+    ...(mode === 'development' ? {
+      define: {
+        'import.meta.env.VITE_API_URL': JSON.stringify(parentEnv.VITE_API_URL),
+        'import.meta.env.VITE_WS_URL': JSON.stringify(parentEnv.VITE_WS_URL),
+        'import.meta.env.VITE_APP_NAME': JSON.stringify(parentEnv.VITE_APP_NAME),
+        'import.meta.env.VITE_USER_ID': JSON.stringify(parentEnv.VITE_USER_ID),
+      },
+    } : {}),
   build: {
     rollupOptions: {
       output: {
@@ -78,5 +93,6 @@ export default defineConfig(() => ({
     sourcemap: false, // Disable in production for smaller builds
     // Enable minification with esbuild (faster than terser)
     minify: 'esbuild' as const
-  }
-}));
+    }
+  };
+});
