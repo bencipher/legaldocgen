@@ -8,9 +8,7 @@ import os
 from time import perf_counter
 from typing import Dict, List, Optional, AsyncGenerator, Set, Union, cast
 
-from openai import max_retries
 from pydantic_ai import Agent, RunContext, ModelRetry
-from langchain.chat_models import init_chat_model
 from retry import retry
 from .models import FieldExtractionResult, FieldRequest, FieldMapping, DocumentContext
 from dotenv import load_dotenv
@@ -76,10 +74,6 @@ class RealLLM:
             instructions=DOCUMENT_GENERATION_PROMPT,
             model_settings={"max_tokens": 8000, "temperature": 0.7},
         )
-
-        # Model for any utility purposes
-        model_name = os.getenv('LLM_MODEL_NAME', 'anthropic:claude-sonnet-4-5')
-        self._normal_llm_model = init_chat_model(model=model_name, temperature=0.7, max_retries=5, max_tokens=8000)
 
     @retry(tries=3, delay=1, backoff=2, max_delay=30, logger=None)
     async def run_completion(self, agent, prompt: str, stream: bool = False, **kwargs):
