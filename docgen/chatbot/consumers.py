@@ -61,11 +61,6 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
         user_message = content.get("content", "").strip()
         conversation_id = content.get("conversation_id", "default")
 
-        # Handle heartbeat messages
-        if msg_type == "ping":
-            await self.send_json({"type": "pong"})
-            return
-
         # Switch to the specified conversation
         if conversation_id != self.current_conversation_id:
             self.current_conversation_id = conversation_id

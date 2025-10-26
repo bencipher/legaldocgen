@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export type MessageType = 'user_message' | 'assistant_message' | 'system_message' | 'generate_document' | 'generation_complete' | 'switch_conversation' | 'conversation_switched' | 'stop_generation' | 'ping' | 'pong';
+export type MessageType = 'user_message' | 'assistant_message' | 'system_message' | 'generate_document' | 'generation_complete' | 'switch_conversation' | 'conversation_switched' | 'stop_generation';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -33,24 +33,6 @@ export const useWebSocket = ({ url, onMessage, onOpen, onClose, onError }: UseWe
   const reconnectAttempts = useRef(0);
   const maxReconnectDelay = 30000; // 30 seconds
   const maxReconnectAttempts = 10; // Limit reconnection attempts
-  const heartbeatRef = useRef<NodeJS.Timeout>();
-
-  const sendHeartbeat = () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'ping' }));
-    }
-  };
-
-  const startHeartbeat = () => {
-    // Send heartbeat every 30 seconds to keep connection alive
-    heartbeatRef.current = setInterval(sendHeartbeat, 30000);
-  };
-
-  const stopHeartbeat = () => {
-    if (heartbeatRef.current) {
-      clearInterval(heartbeatRef.current);
-    }
-  };
 
   const connect = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -81,17 +63,12 @@ export const useWebSocket = ({ url, onMessage, onOpen, onClose, onError }: UseWe
       setIsConnected(true);
       setIsReconnecting(false);
       reconnectAttempts.current = 0;
-      startHeartbeat();
       onOpen?.();
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as WebSocketMessage;
-        // Handle heartbeat responses
-        if (data.type === 'pong') {
-          return; // Just acknowledge the heartbeat
-        }
         onMessage(data);
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error);
@@ -102,7 +79,6 @@ export const useWebSocket = ({ url, onMessage, onOpen, onClose, onError }: UseWe
       console.log('WebSocket disconnected. Code:', event.code, 'Reason:', event.reason);
       clearTimeout(connectionTimeout);
       setIsConnected(false);
-      stopHeartbeat();
       onClose?.();
       
       // Only reconnect if it wasn't a normal closure and we haven't exceeded attempts
@@ -130,8 +106,6 @@ export const useWebSocket = ({ url, onMessage, onOpen, onClose, onError }: UseWe
   };
 
   const disconnect = () => {
-    stopHeartbeat();
-    
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }

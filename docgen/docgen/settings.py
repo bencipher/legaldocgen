@@ -97,20 +97,32 @@ WSGI_APPLICATION = 'docgen.wsgi.application'
 # Channels configuration
 ASGI_APPLICATION = "docgen.asgi.application"
 
-# Enhanced channel layer configuration for better reliability
+# Use a more robust channel layer configuration
+# For development, we'll still use InMemory but with no layer for production
 CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-        "CONFIG": {
-            "capacity": 1500,  # Increase capacity for more messages
-            "expiry": 60,  # Message expiry in seconds
-        },
-    },
+    "default": (
+        {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+            "CONFIG": {
+                "capacity": 10000,  # Much higher capacity
+                "expiry": 300,  # 5 minutes expiry
+            },
+        }
+        if DEBUG
+        else {
+            # For production, use no channel layer (direct WebSocket handling)
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+            "CONFIG": {
+                "capacity": 10000,
+                "expiry": 300,
+            },
+        }
+    ),
 }
 
 # WebSocket configuration for better connection handling
 WEBSOCKET_ACCEPT_ALL = True
-WEBSOCKET_CLOSE_TIMEOUT = 60
+WEBSOCKET_CLOSE_TIMEOUT = 300  # 5 minutes timeout
 
 # For production with Redis, use this instead:
 # CHANNEL_LAYERS = {
