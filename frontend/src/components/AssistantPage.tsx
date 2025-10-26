@@ -10,7 +10,7 @@ import { Wifi, WifiOff, Trash2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 // Lazy load the heavy PreviewPane component
-const PreviewPane = lazy(() => import('./PreviewPane').then(module => ({ default: module.PreviewPane })));
+const PreviewPane = lazy(() => import('./PreviewPane'));
 
 interface AssistantPageProps {
   wsUrl: string;

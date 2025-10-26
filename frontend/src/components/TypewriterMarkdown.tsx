@@ -347,3 +347,6 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
     </div>
   );
 };
+
+// Default export for lazy loading compatibility
+export default TypewriterMarkdown;

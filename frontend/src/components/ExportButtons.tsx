@@ -403,3 +403,6 @@ export const ExportButtons = ({ content, isGenerating, onBackToChat }: ExportBut
     </div>
   );
 };
+
+// Default export for lazy loading compatibility
+export default ExportButtons;

@@ -3,8 +3,8 @@ import { FileText, Loader2 } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 
 // Lazy load heavy components containing large dependencies
-const ExportButtons = lazy(() => import('./ExportButtons').then(module => ({ default: module.ExportButtons })));
-const TypewriterMarkdown = lazy(() => import('./TypewriterMarkdown').then(module => ({ default: module.TypewriterMarkdown })));
+const ExportButtons = lazy(() => import('./ExportButtons'));
+const TypewriterMarkdown = lazy(() => import('./TypewriterMarkdown'));
 
 interface PreviewPaneProps {
   content: string;
@@ -124,3 +124,6 @@ export const PreviewPane = ({ content, isGenerating, isGenerationStarting = fals
     </div>
   );
 };
+
+// Default export for lazy loading compatibility
+export default PreviewPane;
