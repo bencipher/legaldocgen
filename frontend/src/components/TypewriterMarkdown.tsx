@@ -46,13 +46,17 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
         : 100;
       setScrollProgress(Math.round(progress));
       
-      // Calculate page numbers (assuming ~800px per page)
-      const pageHeight = 800;
-      const totalPagesCalc = Math.ceil(scrollHeight / pageHeight);
-      const currentPageCalc = Math.ceil((scrollTop + clientHeight / 2) / pageHeight);
+      // Calculate page numbers based on actual content height and standard page size
+      // Using A4 proportions: ~1100px height represents a standard page
+      const pageHeight = 1100; // More realistic page height for document content
+      const totalPagesCalc = Math.max(1, Math.ceil(scrollHeight / pageHeight));
+      const currentPageCalc = Math.max(1, Math.min(
+        Math.ceil((scrollTop + clientHeight / 2) / pageHeight), 
+        totalPagesCalc
+      ));
       
-      setTotalPages(Math.max(1, totalPagesCalc));
-      setCurrentPage(Math.max(1, Math.min(currentPageCalc, totalPagesCalc)));
+      setTotalPages(totalPagesCalc);
+      setCurrentPage(currentPageCalc);
     }
   };
 
@@ -106,9 +110,10 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
   useEffect(() => {
     if (!isStreaming || !content || !hasContentStarted) return;
 
-    if (currentIndex < content.length) {
+    const cleanedContent = cleanContentForDisplay(content);
+    if (currentIndex < cleanedContent.length) {
       intervalRef.current = setTimeout(() => {
-        setDisplayedContent(content.slice(0, currentIndex + 1));
+        setDisplayedContent(cleanedContent.slice(0, currentIndex + 1));
         setCurrentIndex(currentIndex + 1);
       }, 1000 / speed);
     }
@@ -130,11 +135,20 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
     }
   }, [content]);
 
+  // Clean content for display (remove page break markers)
+  const cleanContentForDisplay = (rawContent: string) => {
+    return rawContent
+      .replace(/---PAGE_BREAK---\s*/g, '')
+      .replace(/^\s*---\s*$/gm, '') // Remove standalone --- lines
+      .replace(/\n{3,}/g, '\n\n'); // Normalize excessive line breaks
+  };
+
   // When streaming stops, show full content immediately
   useEffect(() => {
     if (!isStreaming && content) {
-      setDisplayedContent(content);
-      setCurrentIndex(content.length);
+      const cleanedContent = cleanContentForDisplay(content);
+      setDisplayedContent(cleanedContent);
+      setCurrentIndex(cleanedContent.length);
     }
   }, [isStreaming, content]);
 
@@ -221,6 +235,7 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
             className={`prose prose-slate dark:prose-invert max-w-none
                        prose-headings:text-foreground prose-p:text-foreground 
                        prose-strong:text-foreground prose-li:text-foreground
+                       prose-a:text-primary prose-a:decoration-primary/50 hover:prose-a:decoration-primary
                        prose-blockquote:text-muted-foreground prose-blockquote:border-l-primary
                        prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:rounded
                        prose-pre:bg-muted prose-pre:border
@@ -267,6 +282,14 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
                   <ol className="mb-3 sm:mb-4 ml-4 sm:ml-6 list-decimal space-y-1 sm:space-y-2">
                     {children}
                   </ol>
+                ),
+                a: ({ children, href }) => (
+                  <a 
+                    href={href} 
+                    className="text-primary hover:text-primary/80 underline decoration-primary/50 hover:decoration-primary transition-colors"
+                  >
+                    {children}
+                  </a>
                 ),
                 blockquote: ({ children }) => (
                   <blockquote className="border-l-4 border-primary bg-muted/50 pl-3 sm:pl-4 py-2 my-3 sm:my-4 italic text-sm sm:text-base">

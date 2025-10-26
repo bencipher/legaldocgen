@@ -18,7 +18,15 @@ export const ExportButtons = ({ content, isGenerating, onBackToChat }: ExportBut
 
     try {
       // Remove PAGE_BREAK markers for clean markdown export
-      const cleanContent = content.replace(/---PAGE_BREAK---/g, '\n\n');
+      let cleanContent = content.replace(/---PAGE_BREAK---/g, '\n\n');
+      
+      // Remove any remaining standalone dashes that might be page break artifacts
+      cleanContent = cleanContent.replace(/^---\s*$/gm, '');
+      cleanContent = cleanContent.replace(/^\s*---\s*$/gm, '');
+      
+      // Remove multiple consecutive newlines
+      cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n');
+      
       const blob = new Blob([cleanContent], { type: 'text/markdown;charset=utf-8' });
       saveAs(blob, `document_${Date.now()}.md`);
       toast({
@@ -41,7 +49,14 @@ export const ExportButtons = ({ content, isGenerating, onBackToChat }: ExportBut
     try {
       // Convert markdown to HTML using a simple markdown parser
       // Remove PAGE_BREAK markers first
-      const cleanContent = content.replace(/---PAGE_BREAK---/g, '\n\n');
+      let cleanContent = content.replace(/---PAGE_BREAK---/g, '\n\n');
+      
+      // Remove any remaining standalone dashes that might be page break artifacts
+      cleanContent = cleanContent.replace(/^---\s*$/gm, '');
+      cleanContent = cleanContent.replace(/^\s*---\s*$/gm, '');
+      
+      // Remove multiple consecutive newlines
+      cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n');
       
       // Basic markdown to HTML conversion
       const htmlContent = cleanContent
@@ -49,6 +64,7 @@ export const ExportButtons = ({ content, isGenerating, onBackToChat }: ExportBut
         .replace(/^## (.*$)/gim, '<h2>$1</h2>')
         .replace(/^### (.*$)/gim, '<h3>$1</h3>')
         .replace(/^#### (.*$)/gim, '<h4>$1</h4>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>') // Convert markdown links
         .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/gim, '<em>$1</em>')
         .replace(/^\* (.*$)/gim, '<li>$1</li>')
@@ -95,6 +111,8 @@ export const ExportButtons = ({ content, isGenerating, onBackToChat }: ExportBut
         ul, ol { margin-bottom: 1em; padding-left: 2em; }
         li { margin-bottom: 0.5em; }
         strong { color: #1e40af; }
+        a { color: #2563eb; text-decoration: underline; }
+        a:hover { color: #1d4ed8; }
         @media print {
             body { margin: 0; padding: 20px; }
             h1 { page-break-before: always; }
@@ -161,8 +179,19 @@ export const ExportButtons = ({ content, isGenerating, onBackToChat }: ExportBut
       pdf.setFont('helvetica', 'normal');
 
       // Clean and process content
-      const cleanContent = content.replace(/---PAGE_BREAK---/g, '\n\n');
-      const lines = cleanContent.split('\n');
+      let cleanContent = content.replace(/---PAGE_BREAK---/g, '\n\n');
+      
+      // Remove any remaining standalone dashes that might be page break artifacts
+      cleanContent = cleanContent.replace(/^---\s*$/gm, '');
+      cleanContent = cleanContent.replace(/^\s*---\s*$/gm, '');
+      
+      // Remove multiple consecutive newlines and replace with double newlines
+      cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n');
+      
+      // Process markdown links: convert [text](url) to just text for PDF
+      const processedContent = cleanContent.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+      
+      const lines = processedContent.split('\n');
       
       let currentLine = marginTop;
       
