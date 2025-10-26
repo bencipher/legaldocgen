@@ -4,26 +4,8 @@
   "outputDirectory": "dist",
   "installCommand": "npm ci",
   "framework": "vite",
-  "routes": [
-    {
-      "src": "/assets/(.*)",
-      "headers": { 
-        "cache-control": "public, max-age=31536000, immutable",
-        "content-encoding": "gzip"
-      },
-      "dest": "/assets/$1"
-    },
-    {
-      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot))",
-      "headers": { 
-        "cache-control": "public, max-age=31536000, immutable" 
-      },
-      "dest": "/$1"
-    },
-    { 
-      "src": "/(.*)", 
-      "dest": "/index.html" 
-    }
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
     {
