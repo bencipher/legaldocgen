@@ -290,7 +290,15 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
             # Ends abruptly without proper conclusion
             not any(
                 keyword in document.lower()
-                for keyword in ['signature', 'executed', 'agreed', 'concluded', 'effective date']
+                for keyword in [
+                    'signature',
+                    'executed',
+                    'agreed',
+                    'concluded',
+                    'effective date',
+                    'Nigeria',
+                    'Jurisdiction: Federal Republic of Nigeria',
+                ]
             ),
         ]
 
