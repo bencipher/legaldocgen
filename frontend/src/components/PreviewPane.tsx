@@ -63,7 +63,7 @@ export const PreviewPane = ({ content, isGenerating, isGenerationStarting = fals
               <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
             </div>
           </motion.div>
-        ) : content ? (
+        ) : content && content.trim().length > 10 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -83,6 +83,27 @@ export const PreviewPane = ({ content, isGenerating, isGenerationStarting = fals
                 speed={300}
               />
             </Suspense>
+          </motion.div>
+        ) : isGenerating ? (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center justify-center h-full text-center"
+          >
+            <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-full bg-gradient-primary flex items-center justify-center mb-4 sm:mb-6 shadow-glow animate-pulse">
+              <Loader2 className="w-8 h-8 sm:w-12 sm:h-12 text-white animate-spin" />
+            </div>
+            <h3 className="text-lg sm:text-2xl font-semibold mb-2 bg-gradient-primary bg-clip-text text-transparent">
+              Generating Document...
+            </h3>
+            <p className="text-sm sm:text-base text-muted-foreground max-w-md px-4">
+              Please wait while your document content is being generated...
+            </p>
+            <div className="flex gap-2 mt-6">
+              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
+              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
+              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+            </div>
           </motion.div>
         ) : (
           <motion.div

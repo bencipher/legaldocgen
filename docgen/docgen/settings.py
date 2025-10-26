@@ -97,12 +97,20 @@ WSGI_APPLICATION = 'docgen.wsgi.application'
 # Channels configuration
 ASGI_APPLICATION = "docgen.asgi.application"
 
-# Use in-memory channel layer for local development (no Redis required)
+# Enhanced channel layer configuration for better reliability
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
+        "CONFIG": {
+            "capacity": 1500,  # Increase capacity for more messages
+            "expiry": 60,  # Message expiry in seconds
+        },
     },
 }
+
+# WebSocket configuration for better connection handling
+WEBSOCKET_ACCEPT_ALL = True
+WEBSOCKET_CLOSE_TIMEOUT = 60
 
 # For production with Redis, use this instead:
 # CHANNEL_LAYERS = {
@@ -180,3 +188,51 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Logging configuration for better debugging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose' if DEBUG else 'simple',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'debug.log',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'] if DEBUG else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'channels': {
+            'handlers': ['console', 'file'] if DEBUG else ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'chatbot': {
+            'handlers': ['console', 'file'] if DEBUG else ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+    },
+}

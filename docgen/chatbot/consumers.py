@@ -1,11 +1,16 @@
 import asyncio
 import os
+import logging
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from channels.exceptions import StopConsumer
 from .llm import DocumentOrchestrator
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 MODEL = os.getenv('LLM_MODEL_NAME', 'anthropic:claude-sonnet-4-5')
 
@@ -27,6 +32,23 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
 
         # No connection message - frontend will show connection status in UI
 
+    async def disconnect(self, close_code):
+        """Handle WebSocket disconnection and cleanup resources."""
+        logger.info(f"WebSocket disconnected with code {close_code} for user {self.user_id}")
+
+        # Cleanup orchestrators and any ongoing operations
+        if hasattr(self, 'orchestrators'):
+            for conversation_id, orchestrator in self.orchestrators.items():
+                if orchestrator.state == "generating":
+                    logger.info(f"Stopping generation for conversation {conversation_id}")
+                    orchestrator.state = "idle"  # Reset state
+
+            # Clear orchestrators
+            self.orchestrators.clear()
+
+        # Call parent disconnect
+        await super().disconnect(close_code)
+
     async def receive_json(self, content, **kwargs):
         """
         Handles messages from the frontend.
@@ -38,6 +60,11 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
         msg_type = content.get("type", "user_message")
         user_message = content.get("content", "").strip()
         conversation_id = content.get("conversation_id", "default")
+
+        # Handle heartbeat messages
+        if msg_type == "ping":
+            await self.send_json({"type": "pong"})
+            return
 
         # Switch to the specified conversation
         if conversation_id != self.current_conversation_id:
@@ -61,98 +88,180 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
         return self.orchestrators[self.current_conversation_id]
 
     async def handle_user_message(self, message: str):
-        orchestrator = self.get_current_orchestrator()
+        """Handle user message with proper error handling for disconnections."""
+        try:
+            orchestrator = self.get_current_orchestrator()
 
-        # === If no active state yet, start with goal + extraction ===
-        if orchestrator.state == "idle":
-            await orchestrator.start(message)
-            await orchestrator.record_user_input(message)
+            # === If no active state yet, start with goal + extraction ===
+            if orchestrator.state == "idle":
+                await orchestrator.start(message)
+                await orchestrator.record_user_input(message)  # record inputs from initial prompt
 
-            next_q = await orchestrator.next_question()
-            await self.send_json({"type": "assistant_message", "content": next_q})
-            return
-
-        # === If collecting fields ===
-        elif orchestrator.state == "collecting":
-            await orchestrator.record_user_input(message)
-
-            next_q = await orchestrator.next_question()
-            if next_q:
+                next_q = await orchestrator.next_question()
                 await self.send_json({"type": "assistant_message", "content": next_q})
-            else:
+                return
+
+            # === If collecting fields ===
+            elif orchestrator.state == "collecting":
+                await orchestrator.record_user_input(message)
+
+                next_q = await orchestrator.next_question()
+                if next_q:
+                    await self.send_json({"type": "assistant_message", "content": next_q})
+                else:
+                    await self.send_json(
+                        {
+                            "type": "assistant_message",
+                            "content": "Great! I have all the info I need. Generating your document...",
+                        }
+                    )
+                    asyncio.create_task(self.stream_document())  # start async streaming
+                return
+
+            # === Ignore messages during generation ===
+            elif orchestrator.state == "generating":
+                await self.send_json(
+                    {"type": "assistant_message", "content": "Please hold on, your document is being generated..."}
+                )
+
+            # === Handle continue requests for incomplete documents ===
+            elif message.lower().strip() in ["continue", "continue document", "complete document", "finish document"]:
+                # Reset state to allow continuation
+                orchestrator.state = "generating"
                 await self.send_json(
                     {
                         "type": "assistant_message",
-                        "content": "✅ Great! I have all the info I need. Generating your document...",
+                        "content": "Continuing document generation...",
                     }
                 )
-                asyncio.create_task(self.stream_document())  # start async streaming
-            return
+                asyncio.create_task(self.stream_document(recovery=True))  # start async streaming
 
-        # === Ignore messages during generation ===
-        elif orchestrator.state == "generating":
-            await self.send_json(
-                {"type": "assistant_message", "content": "Please hold on, your document is being generated..."}
-            )
+        except Exception as e:
+            # Log the error and handle client disconnections gracefully
+            if "ClientDisconnected" in str(e) or "ConnectionClosedError" in str(e):
+                logger.info(f"Client disconnected during message handling: {e}")
+                # Don't try to send error message if client is disconnected
+                raise StopConsumer()
+            else:
+                logger.error(f"Error handling user message: {e}")
+                try:
+                    await self.send_json(
+                        {
+                            "type": "system_message",
+                            "content": "An error occurred while processing your message. Please try again.",
+                        }
+                    )
+                except:
+                    # If we can't send the error message, client is likely disconnected
+                    raise StopConsumer()
 
-        # === Handle continue requests for incomplete documents ===
-        elif message.lower().strip() in ["continue", "continue document", "complete document", "finish document"]:
-            # Reset state to allow continuation
-            orchestrator.state = "generating"
-            await self.send_json(
-                {
-                    "type": "assistant_message",
-                    "content": "🔄 Continuing document generation...",
-                }
-            )
-            asyncio.create_task(self.stream_document())  # start async streaming
-
-    async def stream_document(self):
+    async def stream_document(self, recovery: bool = False):
         """Streams generated document chunks to the frontend in real-time with pagination markers."""
-        orchestrator = self.get_current_orchestrator()
-
         try:
+            orchestrator = self.get_current_orchestrator()
             full_document = ""
             chunk_count = 0
 
             async for chunk in orchestrator.generate_document():
+                # Check if WebSocket is still connected before sending
+                if self.channel_layer is None:
+                    logger.info("WebSocket connection lost, stopping document streaming")
+                    return
+
                 full_document += chunk
                 chunk_count += 1
 
                 # Send smaller chunks for better typewriter effect
-                await self.send_json({"type": "generate_document", "chunk": chunk, "chunk_index": chunk_count})
-                print(f"Sent chunk {chunk_count} with length {len(chunk)}")
-                # Add a small delay for better streaming experience
-                await asyncio.sleep(0.05)  # 50ms delay between chunks
+                try:
+                    await self.send_json({"type": "generate_document", "chunk": chunk, "chunk_index": chunk_count})
+                    logger.debug(f"Sent chunk {chunk_count} with length {len(chunk)}")
+                    # Add a small delay for better streaming experience
+                    await asyncio.sleep(0.05)  # 50ms delay between chunks
+                except Exception as e:
+                    if (
+                        "ClientDisconnected" in str(e)
+                        or "ConnectionClosedError" in str(e)
+                        or "websocket.send" in str(e)
+                    ):
+                        logger.info(f"Client disconnected during document streaming at chunk {chunk_count}")
+                        return  # Exit gracefully without error
+                    else:
+                        raise  # Re-raise other exceptions
 
             # Check if document seems incomplete and try to continue
             if self.is_document_incomplete(full_document):
-                await self.send_json(
-                    {"type": "assistant_message", "content": "🔄 Document appears incomplete. Continuing generation..."}
-                )
+                # Check connection before continuing
+                if self.channel_layer is None:
+                    logger.info("WebSocket connection lost, cannot continue generation")
+                    return
 
-                # Continue generation with a continuation prompt
-                continuation = await self.continue_document_generation(full_document)
-                if continuation:
-                    full_document += "\n" + continuation
+                try:
+                    await self.send_json(
+                        {
+                            "type": "assistant_message",
+                            "content": "🔄 Document appears incomplete. Continuing generation...",
+                        }
+                    )
+
+                    # Continue generation with a continuation prompt
+                    continuation = await self.continue_document_generation(full_document)
+                    if continuation:
+                        full_document += "\n" + continuation
+                except Exception as e:
+                    if (
+                        "ClientDisconnected" in str(e)
+                        or "ConnectionClosedError" in str(e)
+                        or "websocket.send" in str(e)
+                    ):
+                        logger.info("Client disconnected during continuation")
+                        return
+                    else:
+                        raise
 
             # Post-process the complete document to add pagination
             paginated_document = self.add_pagination_markers(full_document)
 
-            await self.send_json(
-                {
-                    "type": "generation_complete",
-                    "content": "✅ Document generation completed successfully!",
-                    "full_document": paginated_document,
-                }
-            )
+            # Final connection check before sending completion message
+            if self.channel_layer is None:
+                logger.info("WebSocket connection lost, cannot send completion message")
+                return
+
+            try:
+                await self.send_json(
+                    {
+                        "type": "generation_complete",
+                        "content": "✅ Document generation completed successfully!",
+                        "full_document": paginated_document,
+                    }
+                )
+            except Exception as e:
+                if "ClientDisconnected" in str(e) or "ConnectionClosedError" in str(e) or "websocket.send" in str(e):
+                    logger.info("Client disconnected before completion message could be sent")
+                    return
+                else:
+                    raise
 
             orchestrator.state = "idle"
+
         except Exception as e:
-            await self.send_json({"type": "system_message", "content": f"⚠️ Document generation failed: {str(e)}"})
+            if "ClientDisconnected" in str(e) or "ConnectionClosedError" in str(e) or "websocket.send" in str(e):
+                logger.info(f"Client disconnected during document streaming: {e}")
+                return  # Exit gracefully
+            else:
+                logger.error(f"Error during document streaming: {e}")
+                # Check connection before sending error message
+                if self.channel_layer is not None:
+                    try:
+                        await self.send_json(
+                            {"type": "system_message", "content": f"⚠️ Document generation failed: {str(e)}"}
+                        )
+                    except:
+                        # If we can't send error message, client is disconnected
+                        logger.info("Could not send error message - client likely disconnected")
 
     def is_document_incomplete(self, document: str) -> bool:
         """Check if the document seems incomplete."""
+        # can be handled by llm too
         lines = document.strip().split('\n')
         if not lines:
             return True
@@ -216,20 +325,36 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
             # Use the LLM's generate_document method with continuation context
             continuation_chunks = []
             async for chunk in orchestrator.llm.generate_document(continuation_context):
+                # Check connection before sending chunks
+                if self.channel_layer is None:
+                    logger.info("WebSocket connection lost during continuation, stopping")
+                    break
+
                 continuation_chunks.append(chunk)
                 # Also stream the continuation
-                await self.send_json(
-                    {
-                        "type": "generate_document",
-                        "chunk": chunk,
-                        "chunk_index": 999999,  # High number to indicate continuation
-                    }
-                )
-                await asyncio.sleep(0.05)
+                try:
+                    await self.send_json(
+                        {
+                            "type": "generate_document",
+                            "chunk": chunk,
+                            "chunk_index": 999999,  # High number to indicate continuation
+                        }
+                    )
+                    await asyncio.sleep(0.05)
+                except Exception as e:
+                    if (
+                        "ClientDisconnected" in str(e)
+                        or "ConnectionClosedError" in str(e)
+                        or "websocket.send" in str(e)
+                    ):
+                        logger.info("Client disconnected during continuation streaming")
+                        break
+                    else:
+                        raise
 
             return ''.join(continuation_chunks)
         except Exception as e:
-            print(f"Error in continuation: {e}")
+            logger.error(f"Error in continuation: {e}")
             return ""
 
     def add_pagination_markers(self, document: str) -> str:
@@ -276,7 +401,3 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
 
         # Send confirmation to frontend
         await self.send_json({"type": "system_message", "content": "🛑 Document generation stopped by user."})
-
-    async def disconnect(self, close_code):
-        """Handle client disconnects gracefully."""
-        await super().disconnect(close_code)

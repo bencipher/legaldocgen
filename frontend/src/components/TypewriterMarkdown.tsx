@@ -24,11 +24,16 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
   const contentRef = useRef<HTMLDivElement>(null);
   const lastScrollHeight = useRef(0);
 
-  // Check if content has actually started (more than just whitespace)
+  // Check if actual document content has started (more meaningful content than just whitespace)
   useEffect(() => {
     const trimmedContent = content.trim();
-    if (trimmedContent.length > 0 && !hasContentStarted) {
+    // Only consider it "started" if we have substantial content (more than just a few characters)
+    if (trimmedContent.length > 10 && !hasContentStarted) {
       setHasContentStarted(true);
+    }
+    // Reset if content becomes empty (new generation starting)
+    if (trimmedContent.length === 0 && hasContentStarted) {
+      setHasContentStarted(false);
     }
   }, [content, hasContentStarted]);
 
@@ -89,22 +94,13 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen]);
 
-  // Auto-scroll to bottom when new content is added during streaming
+  // Auto-enter fullscreen when streaming starts (but allow user override)
   useEffect(() => {
-    if (isStreaming && hasContentStarted && contentRef.current) {
-      const element = contentRef.current;
-      const currentScrollHeight = element.scrollHeight;
-      
-      // Only scroll if new content was added (scroll height increased)
-      if (currentScrollHeight > lastScrollHeight.current) {
-        element.scrollTo({
-          top: currentScrollHeight,
-          behavior: 'smooth'
-        });
-        lastScrollHeight.current = currentScrollHeight;
-      }
+    if (isStreaming && hasContentStarted && !isFullscreen) {
+      setIsFullscreen(true);
     }
-  }, [displayedContent, isStreaming, hasContentStarted]);
+    // Don't force fullscreen back on if user manually exited
+  }, [isStreaming, hasContentStarted]); // Removed isFullscreen dependency to allow user exit
 
   // Typewriter effect
   useEffect(() => {
@@ -152,7 +148,7 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
     }
   }, [isStreaming, content]);
 
-  // Show loader while waiting for content to start
+  // Show loader while waiting for content to start OR when streaming but no content yet
   if (isStreaming && !hasContentStarted) {
     return (
       <motion.div
@@ -192,6 +188,12 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
                 Live Generation
               </span>
             )}
+            {isFullscreen && isStreaming && (
+              <span className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+                • Auto Fullscreen
+                <span className="text-xs text-muted-foreground">(Press Esc to exit)</span>
+              </span>
+            )}
           </div>
           
           {/* Page indicator and progress */}
@@ -208,7 +210,7 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
                 size="sm"
                 onClick={toggleFullscreen}
                 className="h-8 w-8 p-0"
-                title="Exit Fullscreen"
+                title="Exit Fullscreen (works during generation)"
               >
                 <Minimize2 className="w-4 h-4" />
               </Button>

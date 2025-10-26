@@ -5,8 +5,10 @@ Replaces the mock orchestrator with actual LLM functionality.
 
 import asyncio
 import os
+from time import perf_counter
 from typing import Dict, List, Optional, AsyncGenerator, Set, Union, cast
 
+from openai import max_retries
 from pydantic_ai import Agent, RunContext, ModelRetry
 from langchain.chat_models import init_chat_model
 from retry import retry
@@ -67,16 +69,17 @@ class RealLLM:
             instructions=FIELD_MAPPING_PROMPT,
         )
 
-        # Agent for document generation
+        # Agent for document generation, set system prompt and parameters later
         self.generation_agent = Agent(
             model_name,
             output_type=str,
             instructions=DOCUMENT_GENERATION_PROMPT,
+            model_settings={"max_tokens": 8000, "temperature": 0.7},
         )
 
         # Model for any utility purposes
         model_name = os.getenv('LLM_MODEL_NAME', 'anthropic:claude-sonnet-4-5')
-        self.llm_model = init_chat_model(model_name=model_name)
+        self._normal_llm_model = init_chat_model(model=model_name, temperature=0.7, max_retries=5, max_tokens=8000)
 
     @retry(tries=3, delay=1, backoff=2, max_delay=30, logger=None)
     async def run_completion(self, agent, prompt: str, stream: bool = False, **kwargs):
@@ -91,17 +94,23 @@ class RealLLM:
 
         Returns:
             For stream=False: The agent's output result
-            For stream=True: List of text chunks from the streaming response
+            For stream=True: AsyncGenerator of text chunks from the streaming response
         """
         if stream:
-            chunks = []
-            async with agent.run_stream(prompt, **kwargs) as result:
-                async for text_chunk in result.stream_text(delta=True):
-                    chunks.append(text_chunk)
-            return chunks
+            return self._run_completion_streaming_impl(agent, prompt, **kwargs)
         else:
-            result = await agent.run(prompt, **kwargs)
-            return result.output
+            return await self._run_completion_complete_impl(agent, prompt, **kwargs)
+
+    async def _run_completion_streaming_impl(self, agent, prompt: str, **kwargs) -> AsyncGenerator[str, None]:
+        """Implementation for streaming completion."""
+        async with agent.run_stream(prompt, **kwargs) as result:
+            async for text_chunk in result.stream_text(delta=True):
+                yield text_chunk
+
+    async def _run_completion_complete_impl(self, agent, prompt: str, **kwargs) -> str:
+        """Implementation for non-streaming completion."""
+        result = await agent.run(prompt, **kwargs)
+        return result.output
 
     async def extract_requirements(self, user_prompt: str) -> List[str]:
         """
@@ -283,7 +292,7 @@ class RealLLM:
         USER_INPUT_HISTORY.add(f"{field_name} as '{value}'")
         return f"Thanks! I've recorded {field_name} as '{value}'."
 
-    async def generate_document(self, context: DocumentContext) -> AsyncGenerator[str, None]:
+    async def generate_document(self, context: DocumentContext, recovery: bool = False) -> AsyncGenerator[str, None]:
         """
         Generate document content in streaming chunks.
 
@@ -314,20 +323,29 @@ class RealLLM:
         4. Signature lines
         5. Date and location information
         
+        ALWAYS: Ensure all the subheadings, sections, fit within 10
         Make it legally sound and professionally formatted.
         """
 
         try:
-            print(f"Generating document with retry logic (max 3 attempts)...")
-            chunks = await self.run_completion(self.generation_agent, prompt, stream=True)
-            # Type cast for clarity - when stream=True, we get List[str]
-            text_chunks = cast(List[str], chunks)
-            # Yield the collected chunks
-            for chunk in text_chunks:
+            print(f"Starting document generation...")
+            start_time = perf_counter()
+
+            # Stream each chunk as it's generated
+            chunk_count = 0
+            async for chunk in self._run_completion_streaming_impl(self.generation_agent, prompt):
+                chunk_count += 1
                 yield chunk
+
+            end_time = perf_counter()
+            generation_time = end_time - start_time
+            print(f"Document generation completed in {generation_time:.2f} seconds")
+            print(f"Streamed {chunk_count} chunks successfully")
+
         except Exception as e:
-            print(f"All LLM document generation attempts failed: {str(e)}")
-            print("Using fallback document generation...")
+            print(f"LLM document generation failed: {str(e)}")
+            print(f"Using fallback document generation...")
+
             # Fallback to simple document generation
             doc_text = f"""
             {context.document_type.upper()}
@@ -354,10 +372,13 @@ class RealLLM:
 
             # Simulate streaming by yielding chunks
             words = doc_text.split()
+            print(f"📄 Streaming {len(words)//3 + 1} fallback chunks to frontend...")
             for i in range(0, len(words), 3):  # Yield 3 words at a time
                 chunk = " ".join(words[i : i + 3]) + " "
                 yield chunk
                 await asyncio.sleep(0.1)  # Simulate processing delay
+
+            print(f"All fallback chunks sent successfully")
 
 
 class DocumentOrchestrator:
@@ -391,8 +412,10 @@ class DocumentOrchestrator:
         Returns:
             Dictionary of required fields initialized to None
         """
-        self.state = "extracting"
-        self.user_goal = user_prompt
+        # self.state = "extracting"
+        self.user_goal = (
+            user_prompt if not self.user_goal else self.user_goal
+        )  # set goal for first message (to be replaced with llm call)
 
         print(f"Extracting requirements for: '{user_prompt}'")
 
@@ -455,7 +478,7 @@ class DocumentOrchestrator:
         if not self._missing_fields():
             self.state = "generating"
 
-    async def generate_document(self) -> AsyncGenerator[str, None]:
+    async def generate_document(self, recovery: bool = False) -> AsyncGenerator[str, None]:
         """
         Generate the final document in streaming chunks.
 
@@ -473,6 +496,9 @@ class DocumentOrchestrator:
             user_goal=self.user_goal,
         )
 
+        if recovery:
+            print("Generating document in recovery mode...")
+            # add extra context needed so llm can continue from failure maybe ToC and last good chunk
         # Stream document generation
         async for chunk in self.llm.generate_document(context):
             yield chunk
