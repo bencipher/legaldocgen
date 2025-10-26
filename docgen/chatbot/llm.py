@@ -72,7 +72,7 @@ class RealLLM:
             model_name,
             output_type=str,
             instructions=DOCUMENT_GENERATION_PROMPT,
-            model_settings={"max_tokens": 8000, "temperature": 0.7},
+            model_settings={"max_tokens": 15000, "temperature": 0.7},
         )
 
     @retry(tries=3, delay=1, backoff=2, max_delay=30, logger=None)
@@ -195,9 +195,9 @@ class RealLLM:
         greet_instr = (
             f"You are a legal practitioner, and the user is seeking your assistance to generate a legal document. "
             f"To achieve this goal — {user_goal}. Greet the user warmly in the response. "
-            f"Start with a sentence such as: 'I am glad to be of assistance in helping you craft your {user_goal}. "
+            f"Start with a short sentence that begins like this or similar phrases: 'I am glad to be of assistance in helping you craft your {user_goal} (summarize the user goal, do not return verbatim). "
             f"To proceed I will be needing the following information:' "
-            f"IMPORTANT: list all of the missing fields to the user '{missing_fields}' clearly in a numbered list."
+            f"IMPORTANT: ALWAYS return the following to the user as a numbered list `{', '.join(missing_fields)}.` "
             if greet_user
             else ""
         )
@@ -210,21 +210,24 @@ class RealLLM:
         Missing fields needed: {missing_fields}
         Fields to request in this interaction: {fields_to_request}
         User's recent actions: {user_last_action}
-
+        
+        GREET_USER: {greet_user}
+        
         Your task:
-        1. If the user provided recent input (see 'User's recent actions'), acknowledge it briefly before asking questions.
-        2. If greet_user is True, include the greeting paragraph first (see greet_instr).
-        3. Always present the missing fields as a **numbered list**.
-        4. After the list, generate a polite sentence requesting those fields in plain language.
-        5. If greet_user is True, end your message with this line:  
-        "You can proceed to provide all the fields at once, or go at your own pace."
-        6. Maintain a friendly, professional, and helpful legal tone — warm but clear.
+        1. ALWAYS: If the user just recently saved some information saving actions as listed in the User's recent actions, briefly acknowledge or thank them before asking your next questions.
+        2. After the list, generate a polite sentence requesting those fields in plain language.
+        3. Maintain a friendly, professional, and helpful legal tone — warm but clear.
+        4. IMPORTANT: be very brief, concise, and to the point.
         """
-        system_prompt = {"role": "system", "content": system_message}
+        end = ""
+        if greet_user:
+            end = "5. ALWAYS: End this section of the message with something like:  You can proceed to provide all the fields at once, or go at your own pace. (or something similar, be creative - the goal is to suggest to the user to give all the info at once if they feel like it)"
+        elif not greet_user and len(missing_fields) <= 2:
+            end = "5. ALWAYS: end the conversation with phrases like finally, to wrap up, last but not least, in conclusion, etc., to indicate that the user is nearing completion of the information gathering process."
 
         try:
             print(f"Requesting fields with retry logic (max 3 attempts)...")
-            result = await self.run_completion(self.field_request_agent, system_message)
+            result = await self.run_completion(self.field_request_agent, system_message + end)
             # Type cast for clarity - we know field_request_agent returns FieldRequest
             field_request = cast(FieldRequest, result)
             return field_request.question
@@ -283,7 +286,7 @@ class RealLLM:
             Thank you message
         """
         # Add to history for future acknowledgments
-        USER_INPUT_HISTORY.add(f"{field_name} as '{value}'")
+        USER_INPUT_HISTORY.add(f"User saved {field_name} as '{value}'")
         return f"Thanks! I've recorded {field_name} as '{value}'."
 
     async def generate_document(self, context: DocumentContext, recovery: bool = False) -> AsyncGenerator[str, None]:
@@ -420,7 +423,7 @@ class DocumentOrchestrator:
         self.fields = {field: None for field in field_list}
 
         self.state = "collecting"
-        return self.fields
+        await self.record_user_input(user_prompt)
 
     def _missing_fields(self) -> List[str]:
         """Get list of fields that still need values."""
@@ -442,7 +445,10 @@ class DocumentOrchestrator:
         user_last_action = ", ".join(list(USER_INPUT_HISTORY))
         USER_INPUT_HISTORY.clear()
         fields_to_request = missing[:2]
-        should_greet = not self.user_greeted
+        if self.user_greeted:
+            should_greet = False
+        else:
+            should_greet = True
         self.user_greeted = True
         return await self.llm.ask_for_field(
             missing, fields_to_request, user_last_action, greet_user=should_greet, user_goal=self.user_goal
@@ -468,7 +474,7 @@ class DocumentOrchestrator:
         for field_name, field_value in field_mappings.items():
             if field_name in self.fields and not self.fields[field_name]:
                 self.fields[field_name] = field_value
-                # thank_msg = await self.llm.thank_user(field_name, field_value)
+                await self.llm.thank_user(field_name, field_value)
         if not self._missing_fields():
             self.state = "generating"
 

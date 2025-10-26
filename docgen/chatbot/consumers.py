@@ -90,7 +90,6 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
             # === If no active state yet, start with goal + extraction ===
             if orchestrator.state == "idle":
                 await orchestrator.start(message)
-                await orchestrator.record_user_input(message)  # record inputs from initial prompt
 
                 next_q = await orchestrator.next_question()
                 await self.send_json({"type": "assistant_message", "content": next_q})
