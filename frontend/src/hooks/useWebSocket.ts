@@ -52,7 +52,6 @@ export const useWebSocket = ({ url, onMessage, onOpen, onClose, onError }: UseWe
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as WebSocketMessage;
-        console.log('WebSocket message received:', data);
         onMessage(data);
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error);
@@ -96,7 +95,6 @@ export const useWebSocket = ({ url, onMessage, onOpen, onClose, onError }: UseWe
 
   const sendMessage = (message: WebSocketMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('Sending WebSocket message:', message);
       wsRef.current.send(JSON.stringify(message));
     } else {
       console.error('WebSocket is not connected');

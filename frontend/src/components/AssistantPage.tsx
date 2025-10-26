@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWebSocket, Message, WebSocketMessage } from '@/hooks/useWebSocket';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useConversationManager } from '@/hooks/useConversationManager';
 import { ChatWindow } from './ChatWindow';
 import { ConversationHistorySidebar } from './ConversationHistorySidebar';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -30,39 +30,32 @@ export const AssistantPage = ({
   onDocumentGenerated,
 }: AssistantPageProps) => {
   const [activeTab, setActiveTab] = useState<TabType>('chat');
-  const [documentContent, setDocumentContent] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGenerationStarting, setIsGenerationStarting] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
-  const [currentConversationId, setCurrentConversationId] = useState('default');
-  const { messages, addMessage, clearMessages } = useLocalStorage(userId, currentConversationId);
   
-  // Conversation management
-  const [conversations, setConversations] = useState<Array<{id: string, title: string, timestamp: number}>>([]);
-
-  const generateConversationTitle = (firstMessage: string): string => {
-    // Extract key words from first message to create title
-    const words = firstMessage.toLowerCase().split(' ').filter(word => 
-      ['agreement', 'contract', 'lease', 'rental', 'employment', 'nda', 'privacy', 'terms', 'service'].includes(word)
-    );
-    if (words.length > 0) {
-      return words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') + ' Document';
-    }
-    // Fallback to first few words
-    return firstMessage.split(' ').slice(0, 3).join(' ') + (firstMessage.split(' ').length > 3 ? '...' : '');
-  };
+  // Use the new conversation manager
+  const {
+    currentConversationId,
+    messages,
+    documentContent,
+    conversations,
+    startNewConversation,
+    switchToConversation,
+    deleteConversation,
+    addMessage,
+    updateDocumentContent,
+    clearCurrentSession,
+    getCurrentConversationTitle
+  } = useConversationManager(userId);
 
   const handleNewConversation = () => {
-    const newId = `conversation-${Date.now()}`;
-    setCurrentConversationId(newId);
-    clearMessages(); // This will clear messages for the current conversation
-    setDocumentContent('');
+    startNewConversation();
     setIsGenerating(false);
     setIsGenerationStarting(false);
     setStreamingMessage(null);
     setActiveTab('chat');
     
-    // Don't add to conversations list until first message is sent
     toast({
       title: 'New Conversation',
       description: 'Started a new conversation.',
@@ -70,8 +63,7 @@ export const AssistantPage = ({
   };
 
   const handleClearSession = () => {
-    clearMessages();
-    setDocumentContent('');
+    clearCurrentSession();
     setIsGenerating(false);
     setIsGenerationStarting(false);
     setStreamingMessage(null);
@@ -116,7 +108,8 @@ export const AssistantPage = ({
       case 'generate_document': {
         setIsGenerating(true);
         if (data.chunk) {
-          setDocumentContent((prev) => prev + data.chunk);
+          const newContent = documentContent + data.chunk;
+          updateDocumentContent(newContent);
           
           // Create or update streaming message for typewriter effect
           if (!streamingMessage) {
@@ -147,7 +140,7 @@ export const AssistantPage = ({
         
         // Update with final document if provided
         if (data.full_document) {
-          setDocumentContent(data.full_document);
+          updateDocumentContent(data.full_document);
         }
         
         // Check if document seems incomplete for user feedback
@@ -228,17 +221,6 @@ export const AssistantPage = ({
     const message: Message = { role: 'user', content };
     addMessage(message);
     
-    // If this is the first message in the current conversation, create conversation entry
-    if (messages.length === 0 && !conversations.some(c => c.id === currentConversationId)) {
-      const title = generateConversationTitle(content);
-      const newConversation = {
-        id: currentConversationId,
-        title,
-        timestamp: Date.now(),
-      };
-      setConversations(prev => [...prev, newConversation]);
-    }
-    
     sendMessage({
       type: 'user_message',
       content,
@@ -272,13 +254,15 @@ export const AssistantPage = ({
           conversations={conversations}
           activeConversationId={currentConversationId}
           onSelectConversation={(id) => {
-            setCurrentConversationId(id);
-            // Reset all states when switching conversations
-            setDocumentContent('');
+            const result = switchToConversation(id);
+            if (result) {
+              // Successfully switched - restore document content and set active tab
+              setActiveTab(result.documentContent ? 'preview' : 'chat');
+            }
+            // IMPORTANT: Reset all streaming/animation states when switching conversations
             setIsGenerating(false);
             setIsGenerationStarting(false);
             setStreamingMessage(null);
-            setActiveTab('chat');
             
             // Notify backend about conversation switch
             sendMessage({
@@ -293,11 +277,7 @@ export const AssistantPage = ({
             });
           }}
           onDeleteConversation={(id) => {
-            setConversations(conversations.filter((c) => c.id !== id));
-            // If deleting current conversation, create new one
-            if (id === currentConversationId) {
-              handleNewConversation();
-            }
+            deleteConversation(id);
             toast({
               title: 'Conversation Deleted',
               description: 'Conversation has been removed.',
@@ -317,7 +297,7 @@ export const AssistantPage = ({
                     {projectName}
                   </h1>
                   <p className="text-xs sm:text-sm text-muted-foreground mt-1 truncate">
-                    {conversations.find(c => c.id === currentConversationId)?.title || 'New Conversation'}
+                    {getCurrentConversationTitle()}
                   </p>
                 </div>
 
@@ -391,6 +371,7 @@ export const AssistantPage = ({
                   className="h-full"
                 >
                   <ChatWindow
+                    key={currentConversationId} // Force remount on conversation change
                     messages={messages}
                     onSendMessage={handleSendMessage}
                     onStopGeneration={handleStopGeneration}

@@ -41,7 +41,7 @@ export const PreviewPane = ({ content, isGenerating, isGenerationStarting = fals
       </div>
 
       {/* Preview Content */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-8">
+      <div className="flex-1 min-h-0 px-3 sm:px-6 py-4 sm:py-8">
         {isGenerationStarting ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -69,7 +69,7 @@ export const PreviewPane = ({ content, isGenerating, isGenerationStarting = fals
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
             id="preview-content"
-            className="max-w-full sm:max-w-4xl mx-auto"
+            className="max-w-full sm:max-w-4xl mx-auto h-full flex flex-col"
           >
             <Suspense fallback={
               <div className="flex items-center justify-center p-8">
@@ -80,7 +80,7 @@ export const PreviewPane = ({ content, isGenerating, isGenerationStarting = fals
               <TypewriterMarkdown 
                 content={content} 
                 isStreaming={isGenerating}
-                speed={400}
+                speed={300}
               />
             </Suspense>
           </motion.div>
