@@ -102,22 +102,31 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
 
                 next_q = await orchestrator.next_question()
                 if next_q:
-                    await self.send_json({"type": "assistant_message", "content": next_q})
+                    try:
+                        await self.send_json({"type": "assistant_message", "content": next_q})
+                    except Exception:
+                        return
                 else:
-                    await self.send_json(
-                        {
-                            "type": "assistant_message",
-                            "content": "Great! I have all the info I need. Generating your document...",
-                        }
-                    )
+                    try:
+                        await self.send_json(
+                            {
+                                "type": "assistant_message",
+                                "content": "Great! I have all the info I need. Generating your document...",
+                            }
+                        )
+                    except Exception:
+                        return
                     asyncio.create_task(self.stream_document())  # start async streaming
                 return
 
             # === Ignore messages during generation ===
             elif orchestrator.state == "generating":
-                await self.send_json(
-                    {"type": "assistant_message", "content": "Please hold on, your document is being generated..."}
-                )
+                try:
+                    await self.send_json(
+                        {"type": "assistant_message", "content": "Please hold on, your document is being generated..."}
+                    )
+                except Exception:
+                    return
 
             # === Handle continue requests for incomplete documents ===
             elif message.lower().strip() in ["continue", "continue document", "complete document", "finish document"]:
