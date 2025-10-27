@@ -165,7 +165,7 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
             orchestrator = self.get_current_orchestrator()
             full_document = ""
             chunk_count = 0
-            last_chunk = ""
+
             async for chunk in orchestrator.generate_document():
                 # Check if WebSocket is still connected before sending
                 if self.channel_layer is None:
@@ -189,10 +189,10 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
                         return  # Exit gracefully without error
                     else:
                         raise  # Re-raise other exceptions
-                last_chunk = chunk
 
             # Check if document seems incomplete and try to continue
-            if await self.is_document_incomplete(last_chunk):
+            if await self.is_document_incomplete(full_document[-1000:]):  # Check excluding last chunk
+                # ...
                 # Check connection before continuing
                 if self.channel_layer is None:
                     logger.info("WebSocket connection lost, cannot continue generation")
@@ -256,7 +256,7 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
                 if self.channel_layer is not None:
                     try:
                         await self.send_json(
-                            {"type": "system_message", "content": f"⚠️ Document generation failed: {str(e)}"}
+                            {"type": "system_message", "content": f"Document generation failed: {str(e)}"}
                         )
                     except:
                         # If we can't send error message, client is disconnected
@@ -265,8 +265,8 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
     async def is_document_incomplete(self, chunk: str) -> bool:
         #  check the last chunk for common signs of incompleteness
         orchestrator = self.get_current_orchestrator()
-        completed = not await orchestrator.llm.verify_doc(chunk)
-        logger.info(f"Document completeness check: {'incomplete' if completed else 'complete'}")
+        completed = await orchestrator.llm.verify_doc(chunk)
+        logger.info(f"Document completeness check: {'complete' if completed else 'incomplete'}")
         return completed
 
     async def continue_document_generation(self, partial_document: str) -> str:
