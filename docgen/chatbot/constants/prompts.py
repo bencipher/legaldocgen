@@ -81,6 +81,8 @@ You are a document processing expert. Your job is to map the information provide
 Extract the relevant information from the conversation and map it to the appropriate document fields. Be thorough and accurate in your mapping.
 
 If any information is unclear or ambiguous, note it in your response so the user can be asked for clarification.
+In some cases, users might not separate multiple inputs clearly with comma or other punctuation, break it down and map the field appropriately where there is a confident match.
+If input contains unrelated information, ignore that and focus only on mapping relevant details present in that input.
 """
 
 # Agent instructions for document generation

@@ -1,6 +1,6 @@
 # FirstRead LLC Document Agent
 
-An intelligent legal document generation platform that demonstrates advanced AI integration, real-time communication, and modern web development practices. This application showcases conversational AI for document creation with sophisticated user experience features.
+An intelligent legal document generation platform that demonstrates advanced AI integration, real-time communication, and modern web development practices. This application showcases conversational AI for document creation with sophisticated user experience features and specialized agent orchestration.
 
 ## Application Overview
 
