@@ -17,6 +17,9 @@ interface ChatWindowProps {
   isGenerating?: boolean;
   documentContent?: string;
   isReconnecting?: boolean;
+  isGenerationComplete?: boolean; // Add this prop to track completion
+  isChatEnded?: boolean; // Add this prop to track if chat has ended
+  onStartNewDocument?: () => void; // Add this prop to handle starting new document
 }
 
 export const ChatWindow = ({ 
@@ -27,7 +30,10 @@ export const ChatWindow = ({
   streamingMessage, 
   isGenerating = false,
   documentContent,
-  isReconnecting = false 
+  isReconnecting = false,
+  isGenerationComplete = false,
+  isChatEnded = false,
+  onStartNewDocument
 }: ChatWindowProps) => {
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -151,8 +157,31 @@ export const ChatWindow = ({
 
       {/* Input Area */}
       <div className="border-t border-border bg-card px-3 sm:px-6 py-3 sm:py-4">
+        {/* Chat ended - show completion message and new document button */}
+        {isChatEnded && (
+          <div className="mb-3 p-3 sm:p-4 bg-green-50 rounded-lg border border-green-200 dark:bg-green-950 dark:border-green-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm sm:text-base font-medium text-green-700 dark:text-green-300 mb-1">
+                  🎉 Document Generation Complete!
+                </p>
+                <p className="text-xs sm:text-sm text-green-600 dark:text-green-400">
+                  Your document has been successfully generated. You can view it in the Preview tab and export it when ready.
+                </p>
+              </div>
+              <Button
+                onClick={onStartNewDocument}
+                className="w-full sm:w-auto text-xs sm:text-sm bg-green-600 hover:bg-green-700 text-white"
+                size="sm"
+              >
+                Start New Document
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Resume Generation Button - shows when reconnected and has partial content */}
-        {isConnected && !isGenerating && documentContent && documentContent.length > 100 && retryCount < MAX_RETRY_ATTEMPTS && (
+        {isConnected && !isGenerating && !isGenerationComplete && !isChatEnded && documentContent && documentContent.length > 100 && retryCount < MAX_RETRY_ATTEMPTS && (
           <div className="mb-3 p-2 sm:p-3 bg-muted/50 rounded-lg border border-orange-200 dark:border-orange-800">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
               <div className="flex-1 min-w-0">
@@ -176,7 +205,7 @@ export const ChatWindow = ({
         )}
 
         {/* Max retry attempts reached */}
-        {isConnected && !isGenerating && documentContent && documentContent.length > 100 && retryCount >= MAX_RETRY_ATTEMPTS && (
+        {isConnected && !isGenerating && !isGenerationComplete && !isChatEnded && documentContent && documentContent.length > 100 && retryCount >= MAX_RETRY_ATTEMPTS && (
           <div className="mb-3 p-2 sm:p-3 bg-red-50 rounded-lg border border-red-200 dark:bg-red-950 dark:border-red-800">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
               <div className="flex-1 min-w-0">
@@ -191,45 +220,48 @@ export const ChatWindow = ({
           </div>
         )}
         
-        <div className="flex gap-2 sm:gap-3 items-end">
-          <Textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isConnected ? "Type your message..." : "Connecting..."}
-            disabled={!isConnected || isSending || isGenerating}
-            className="flex-1 resize-none min-h-[40px] max-h-[120px] text-sm sm:text-base"
-            rows={1}
-          />
-          
-          {/* Show Stop button during generation, Send button otherwise */}
-          {isGenerating ? (
-            <Button
-              onClick={handleStopGeneration}
-              variant="destructive"
-              className="gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base"
-              size="sm"
-            >
-              <Square className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Stop</span>
-            </Button>
-          ) : (
-            <Button
-              onClick={handleSend}
-              disabled={!isConnected || !input.trim() || isSending}
-              className="gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base"
-              size="sm"
-            >
-              {isSending ? (
-                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
-              ) : (
-                <Send className="w-3 h-3 sm:w-4 sm:h-4" />
-              )}
-              <span className="hidden sm:inline">Send</span>
-            </Button>
-          )}
-        </div>
+        {/* Input area - disabled when chat is ended */}
+        {!isChatEnded && (
+          <div className="flex gap-2 sm:gap-3 items-end">
+            <Textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isConnected ? "Type your message..." : "Connecting..."}
+              disabled={!isConnected || isSending || isGenerating}
+              className="flex-1 resize-none min-h-[40px] max-h-[120px] text-sm sm:text-base"
+              rows={1}
+            />
+            
+            {/* Show Stop button during generation, Send button otherwise */}
+            {isGenerating ? (
+              <Button
+                onClick={handleStopGeneration}
+                variant="destructive"
+                className="gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base"
+                size="sm"
+              >
+                <Square className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Stop</span>
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSend}
+                disabled={!isConnected || !input.trim() || isSending}
+                className="gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base"
+                size="sm"
+              >
+                {isSending ? (
+                  <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
+                ) : (
+                  <Send className="w-3 h-3 sm:w-4 sm:h-4" />
+                )}
+                <span className="hidden sm:inline">Send</span>
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

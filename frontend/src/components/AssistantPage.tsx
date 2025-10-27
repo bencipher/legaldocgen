@@ -32,6 +32,8 @@ export const AssistantPage = ({
   const [activeTab, setActiveTab] = useState<TabType>('chat');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGenerationStarting, setIsGenerationStarting] = useState(false);
+  const [isGenerationComplete, setIsGenerationComplete] = useState(false);
+  const [isChatEnded, setIsChatEnded] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
   
   // Use the new conversation manager
@@ -50,9 +52,21 @@ export const AssistantPage = ({
   } = useConversationManager(userId);
 
   const handleNewConversation = () => {
+    // Prevent creating new conversation during generation
+    if (isGenerating) {
+      toast({
+        title: 'Generation in Progress',
+        description: 'Please wait for the current document generation to complete before starting a new conversation.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     startNewConversation();
     setIsGenerating(false);
     setIsGenerationStarting(false);
+    setIsGenerationComplete(false); // Reset completion status for new conversation
+    setIsChatEnded(false); // Reset chat ended status for new conversation
     setStreamingMessage(null);
     setActiveTab('chat');
     
@@ -63,11 +77,27 @@ export const AssistantPage = ({
   };
 
   const handleClearSession = () => {
+    // Prevent clearing session during generation
+    if (isGenerating) {
+      toast({
+        title: 'Generation in Progress',
+        description: 'Please wait for the current document generation to complete before clearing the session.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     clearCurrentSession();
     setIsGenerating(false);
     setIsGenerationStarting(false);
+    setIsGenerationComplete(false);
+    setIsChatEnded(false); // Reset chat ended status when clearing session
     setStreamingMessage(null);
     setActiveTab('chat');
+    
+    // Clear ALL backend orchestrator objects
+    resetAllSessions();
+    
     toast({
       title: 'Session Cleared',
       description: 'All messages and generated content have been cleared.',
@@ -107,6 +137,7 @@ export const AssistantPage = ({
 
       case 'generate_document': {
         setIsGenerating(true);
+        setIsGenerationComplete(false); // Reset completion status when starting new generation
         if (data.chunk) {
           const newContent = documentContent + data.chunk;
           updateDocumentContent(newContent);
@@ -131,6 +162,7 @@ export const AssistantPage = ({
 
       case 'generation_complete': {
         setIsGenerating(false);
+        setIsGenerationComplete(true);
         
         // Add the complete document as a final message
         if (streamingMessage) {
@@ -167,10 +199,36 @@ export const AssistantPage = ({
         }
         break;
       }
+      
+      case 'all_sessions_reset': {
+        // Backend has confirmed all sessions have been cleared
+        toast({
+          title: 'Sessions Cleared',
+          description: 'All conversation sessions have been successfully cleared.',
+          variant: 'default'
+        });
+        break;
+      }
+      
+      case 'chat_ended': {
+        // Chat has ended after successful generation
+        setIsChatEnded(true);
+        addMessage({ role: 'system', content: data.content || 'Chat ended.' });
+        
+        // Automatically switch to preview tab to show the completed document
+        setActiveTab('preview');
+        
+        toast({
+          title: 'Document Complete!',
+          description: 'Your document has been generated successfully. Check the Preview tab.',
+          variant: 'default'
+        });
+        break;
+      }
     }
   };
 
-  const { isConnected, isReconnecting, sendMessage } = useWebSocket({
+  const { isConnected, isReconnecting, sendMessage, resetAllSessions } = useWebSocket({
     url: wsUrl,
     onMessage: handleWebSocketMessage,
     onOpen: () => {
@@ -253,7 +311,18 @@ export const AssistantPage = ({
         <ConversationHistorySidebar
           conversations={conversations}
           activeConversationId={currentConversationId}
+          isGenerating={isGenerating}
           onSelectConversation={(id) => {
+            // Prevent switching conversations during generation
+            if (isGenerating) {
+              toast({
+                title: 'Generation in Progress',
+                description: 'Please wait for the current document generation to complete before switching conversations.',
+                variant: 'destructive'
+              });
+              return;
+            }
+
             const result = switchToConversation(id);
             if (result) {
               // Successfully switched - restore document content and set active tab
@@ -262,6 +331,8 @@ export const AssistantPage = ({
             // IMPORTANT: Reset all streaming/animation states when switching conversations
             setIsGenerating(false);
             setIsGenerationStarting(false);
+            setIsGenerationComplete(false);
+            setIsChatEnded(false); // Reset chat ended status when switching conversations
             setStreamingMessage(null);
             
             // Notify backend about conversation switch
@@ -269,7 +340,7 @@ export const AssistantPage = ({
               type: 'switch_conversation',
               conversation_id: id,
             });
-            
+
             toast({
               title: 'Conversation Selected',
               description: `Switched to conversation`,
@@ -277,6 +348,16 @@ export const AssistantPage = ({
             });
           }}
           onDeleteConversation={(id) => {
+            // Prevent deleting conversations during generation
+            if (isGenerating) {
+              toast({
+                title: 'Generation in Progress',
+                description: 'Please wait for the current document generation to complete before deleting conversations.',
+                variant: 'destructive'
+              });
+              return;
+            }
+
             deleteConversation(id);
             toast({
               title: 'Conversation Deleted',
@@ -380,6 +461,9 @@ export const AssistantPage = ({
                     isGenerating={isGenerating}
                     documentContent={documentContent}
                     isReconnecting={isReconnecting}
+                    isGenerationComplete={isGenerationComplete}
+                    isChatEnded={isChatEnded}
+                    onStartNewDocument={handleNewConversation}
                   />
                 </motion.div>
               ) : (

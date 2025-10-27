@@ -76,6 +76,8 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
             await self.send_json({"type": "conversation_switched", "conversation_id": conversation_id})
         elif msg_type == "stop_generation":
             await self.handle_stop_generation()
+        elif msg_type == "reset_all_sessions":
+            await self.handle_reset_all_sessions()
 
     def get_current_orchestrator(self):
         """Get the orchestrator for the current conversation."""
@@ -191,35 +193,11 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
                         raise  # Re-raise other exceptions
 
             # Check if document seems incomplete and try to continue
-            if await self.is_document_incomplete(full_document[-1000:]):  # Check excluding last chunk
-                # ...
+            if not await self.is_document_incomplete(full_document[-1000:]):  # Check excluding last chunk
+                logger.info("Document appears incomplete, attempting to continue generation")
                 # Check connection before continuing
-                if self.channel_layer is None:
-                    logger.info("WebSocket connection lost, cannot continue generation")
-                    return
+                # implement recovery method
 
-                try:
-                    await self.send_json(
-                        {
-                            "type": "assistant_message",
-                            "content": "🔄 Document appears incomplete. Continuing generation...",
-                        }
-                    )
-
-                    # Continue generation with a continuation prompt
-                    continuation = await self.continue_document_generation(full_document)
-                    if continuation:
-                        full_document += "\n" + continuation
-                except Exception as e:
-                    if (
-                        "ClientDisconnected" in str(e)
-                        or "ConnectionClosedError" in str(e)
-                        or "websocket.send" in str(e)
-                    ):
-                        logger.info("Client disconnected during continuation")
-                        return
-                    else:
-                        raise
             logger.info("Document generation complete")
             # Post-process the complete document to add pagination
             paginated_document = self.add_pagination_markers(full_document)
@@ -235,6 +213,14 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
                         "type": "generation_complete",
                         "content": "✅ Document generation completed successfully!",
                         "full_document": paginated_document,
+                    }
+                )
+
+                # Send chat ended message to prevent further input
+                await self.send_json(
+                    {
+                        "type": "chat_ended",
+                        "content": "🎉 Your document is ready! You can review it in the Preview tab and export it. To create a new document, please start a new conversation.",
                     }
                 )
             except Exception as e:
@@ -377,3 +363,18 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
 
         # Send confirmation to frontend
         await self.send_json({"type": "system_message", "content": "🛑 Document generation stopped by user."})
+
+    async def handle_reset_all_sessions(self):
+        """Handle reset all sessions request from frontend - clears all orchestrator objects."""
+        try:
+            # Clear ALL orchestrator objects
+            self.orchestrators.clear()
+            self.current_conversation_id = None
+
+            # Send confirmation to frontend
+            await self.send_json(
+                {"type": "all_sessions_reset", "content": "All sessions have been cleared successfully."}
+            )
+
+        except Exception as e:
+            await self.send_json({"type": "system_message", "content": f"Error clearing sessions: {str(e)}"})

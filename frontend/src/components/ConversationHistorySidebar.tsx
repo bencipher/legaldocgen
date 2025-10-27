@@ -22,6 +22,7 @@ interface ConversationHistorySidebarProps {
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onNewConversation: () => void;
+  isGenerating?: boolean; // Add this prop to disable interactions during generation
 }
 
 export const ConversationHistorySidebar = ({
@@ -30,6 +31,7 @@ export const ConversationHistorySidebar = ({
   onSelectConversation,
   onDeleteConversation,
   onNewConversation,
+  isGenerating = false,
 }: ConversationHistorySidebarProps) => {
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -50,6 +52,8 @@ export const ConversationHistorySidebar = ({
           onClick={onNewConversation}
           className="w-full"
           variant="default"
+          disabled={isGenerating}
+          title={isGenerating ? "Cannot create new conversation during document generation" : "Start a new conversation"}
         >
           <MessageSquare className="w-4 h-4 mr-2" />
           New Conversation
@@ -74,6 +78,10 @@ export const ConversationHistorySidebar = ({
                           onClick={() => onSelectConversation(conversation.id)}
                           isActive={activeConversationId === conversation.id}
                           className="w-full justify-start pr-10"
+                          disabled={isGenerating && activeConversationId !== conversation.id}
+                          title={isGenerating && activeConversationId !== conversation.id ? 
+                            "Cannot switch conversations during document generation" : 
+                            `Switch to ${conversation.title}`}
                         >
                           <div className="flex flex-col items-start w-full overflow-hidden">
                             <span className="truncate w-full text-sm font-medium">
@@ -88,6 +96,8 @@ export const ConversationHistorySidebar = ({
                           variant="ghost"
                           size="icon"
                           className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8"
+                          disabled={isGenerating}
+                          title={isGenerating ? "Cannot delete conversations during document generation" : "Delete conversation"}
                           onClick={(e) => {
                             e.stopPropagation();
                             onDeleteConversation(conversation.id);

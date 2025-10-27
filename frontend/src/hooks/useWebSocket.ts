@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export type MessageType = 'user_message' | 'assistant_message' | 'system_message' | 'generate_document' | 'generation_complete' | 'switch_conversation' | 'conversation_switched' | 'stop_generation';
+export type MessageType = 'user_message' | 'assistant_message' | 'system_message' | 'generate_document' | 'generation_complete' | 'switch_conversation' | 'conversation_switched' | 'stop_generation' | 'reset_all_sessions' | 'all_sessions_reset' | 'chat_ended';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -126,6 +126,12 @@ export const useWebSocket = ({ url, onMessage, onOpen, onClose, onError }: UseWe
     }
   };
 
+  const resetAllSessions = () => {
+    return sendMessage({
+      type: 'reset_all_sessions'
+    });
+  };
+
   useEffect(() => {
     connect();
     return () => disconnect();
@@ -136,6 +142,7 @@ export const useWebSocket = ({ url, onMessage, onOpen, onClose, onError }: UseWe
     isConnected,
     isReconnecting,
     sendMessage,
+    resetAllSessions,
     reconnect: connect,
     reconnectAttempts: reconnectAttempts.current,
     maxReconnectAttempts,
