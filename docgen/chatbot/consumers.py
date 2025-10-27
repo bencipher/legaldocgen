@@ -3,6 +3,7 @@ import os
 import logging
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.exceptions import StopConsumer
+from py import log
 from .llm import DocumentOrchestrator
 from dotenv import load_dotenv
 
@@ -164,7 +165,7 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
             orchestrator = self.get_current_orchestrator()
             full_document = ""
             chunk_count = 0
-
+            last_chunk = ""
             async for chunk in orchestrator.generate_document():
                 # Check if WebSocket is still connected before sending
                 if self.channel_layer is None:
@@ -177,9 +178,7 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
                 # Send smaller chunks for better typewriter effect
                 try:
                     await self.send_json({"type": "generate_document", "chunk": chunk, "chunk_index": chunk_count})
-                    logger.debug(f"Sent chunk {chunk_count} with length {len(chunk)}")
-                    # Add a small delay for better streaming experience
-                    await asyncio.sleep(0.05)  # 50ms delay between chunks
+                    logger.debug(f"Sent chunk {chunk_count} with length {len(chunk)} with content: {chunk}")
                 except Exception as e:
                     if (
                         "ClientDisconnected" in str(e)
@@ -190,9 +189,10 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
                         return  # Exit gracefully without error
                     else:
                         raise  # Re-raise other exceptions
+                last_chunk = chunk
 
             # Check if document seems incomplete and try to continue
-            if self.is_document_incomplete(full_document):
+            if await self.is_document_incomplete(last_chunk):
                 # Check connection before continuing
                 if self.channel_layer is None:
                     logger.info("WebSocket connection lost, cannot continue generation")
@@ -220,7 +220,7 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
                         return
                     else:
                         raise
-
+            logger.info("Document generation complete")
             # Post-process the complete document to add pagination
             paginated_document = self.add_pagination_markers(full_document)
 
@@ -262,47 +262,12 @@ class DocumentAgentConsumer(AsyncJsonWebsocketConsumer):
                         # If we can't send error message, client is disconnected
                         logger.info("Could not send error message - client likely disconnected")
 
-    def is_document_incomplete(self, document: str) -> bool:
-        """Check if the document seems incomplete."""
-        # can be handled by llm too
-        lines = document.strip().split('\n')
-        if not lines:
-            return True
-
-        last_line = lines[-1].strip()
-
-        # Check for incomplete patterns
-        incomplete_indicators = [
-            # Incomplete sentences
-            last_line.endswith('...'),
-            last_line.endswith(','),
-            last_line.endswith('and'),
-            last_line.endswith('or'),
-            last_line.endswith('but'),
-            last_line.endswith('the'),
-            last_line.endswith('a'),
-            last_line.endswith('an'),
-            # Incomplete sections
-            '## ' in last_line and len(last_line) < 50,
-            '### ' in last_line and len(last_line) < 50,
-            # Document too short (less than 8 pages estimated)
-            len(document.split('\n')) < 200,  # ~25 lines per page * 8 pages
-            # Ends abruptly without proper conclusion
-            not any(
-                keyword in document.lower()
-                for keyword in [
-                    'signature',
-                    'executed',
-                    'agreed',
-                    'concluded',
-                    'effective date',
-                    'Nigeria',
-                    'Jurisdiction: Federal Republic of Nigeria',
-                ]
-            ),
-        ]
-
-        return any(incomplete_indicators)
+    async def is_document_incomplete(self, chunk: str) -> bool:
+        #  check the last chunk for common signs of incompleteness
+        orchestrator = self.get_current_orchestrator()
+        completed = not await orchestrator.llm.verify_doc(chunk)
+        logger.info(f"Document completeness check: {'incomplete' if completed else 'complete'}")
+        return completed
 
     async def continue_document_generation(self, partial_document: str) -> str:
         """Continue generating the document from where it left off."""

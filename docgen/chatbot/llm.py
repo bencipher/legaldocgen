@@ -17,6 +17,7 @@ from .constants.fields import (
     detect_document_type_by_keywords,
 )
 from .constants.prompts import (
+    COMPLETION_DONE_PROMPT,
     REQUIREMENT_EXTRACTION_PROMPT,
     FIELD_INFORMATION_PROMPT,
     FIELD_MAPPING_PROMPT,
@@ -75,6 +76,8 @@ class RealLLM:
             model_settings={"max_tokens": 15000, "temperature": 0.7},
         )
 
+        self.completion_check_agent = Agent(model_name, output_type=str, instructions=COMPLETION_DONE_PROMPT)
+
     @retry(tries=3, delay=1, backoff=2, max_delay=30, logger=None)
     async def run_completion(self, agent, prompt: str, stream: bool = False, **kwargs):
         """
@@ -105,6 +108,14 @@ class RealLLM:
         """Implementation for non-streaming completion."""
         result = await agent.run(prompt, **kwargs)
         return result.output
+
+    async def verify_doc(self, text: str) -> bool:
+        result = await self.run_completion(
+            self.completion_check_agent, f"Now analyze this text chunk: {text}", stream=False
+        )
+        result_str = str(result).lower()
+        # Return True if the result indicates completion/verification
+        return result_str == "true"
 
     async def extract_requirements(self, user_prompt: str) -> List[str]:
         """
@@ -424,6 +435,8 @@ class DocumentOrchestrator:
 
         self.state = "collecting"
         await self.record_user_input(user_prompt)
+
+        return self.fields
 
     def _missing_fields(self) -> List[str]:
         """Get list of fields that still need values."""

@@ -92,6 +92,14 @@ You are a professional legal document writer. Your task is to generate a complet
 **CORE DIRECTIVE:**
 You must manage the document's structure and content density to ensure every section is fully developed and the final product is a polished, ready-to-use legal instrument. You will achieve this by following a strict, multi-step process.
 
+**CRITICAL FORMATTING RULES:**
+- **DO NOT** start your response with any planning text, analysis, or blueprint
+- **DO NOT** end your response with verification statements, completion notes, or summary text
+- **BEGIN IMMEDIATELY** with the actual legal document content using proper Markdown formatting
+- **END NATURALLY** with the final signature blocks and execution clauses without adding "END OF DOCUMENT" or similar markers
+NEVER: Explain or display numbers of words in each section; simply produce the document as specified.
+NEVER EXPLAIN YOUR PROCESS OR STEPS; IMMEDIATELY BEGIN THE DOCUMENT CONTENT.
+NEVER SUMMARIZE YOUR VERIFICATION; JUST PRODUCE THE DOCUMENT AND NOTHING MORE
 ---
 
 ### **STEP 1: DOCUMENT BLUEPRINT & PACING ANALYSIS (CHAIN OF THOUGHT)**
@@ -163,7 +171,18 @@ Before declaring the document complete, perform a final review:
 - "Is the entire document cohesive and free of placeholder text like '[...]'?"
 - "Does the final document meet the length and depth requirements, feeling complete and ready for legal review?"
 
-**BEGIN:** Start by creating your **DOCUMENT BLUEPRINT** based on the user's input. Then, proceed to generate the document iteratively.
+
+ALWAYS NOTE FOR YOUR FINAL OUTPUT:
+- ONLY output the document content in Markdown format.
+- NEVER: Explain or display numbers of words in each section at the beginning or ending.
+- NEVER EXPLAIN YOUR PROCESS OR STEPS; IMMEDIATELY BEGIN THE DOCUMENT CONTENT.
+- NEVER SUMMARIZE YOUR VERIFICATION; JUST PRODUCE THE DOCUMENT AND NOTHING MORE
+- ALWAYS ONLY GENERATE THE DOCUMENT CONTENT FOLLOWING THE SPECIFCATIONS AND NOTHING ELSE
+
+
+**BEGIN:** Start by creating your **DOCUMENT BLUEPRINT** based on the user's input. NEVER reveal this blueprint to the user.
+Then, proceed to generate the document iteratively.
+
 """
 
 
@@ -212,6 +231,7 @@ SYSTEM_PROMPTS = {
     - Adapt structure to document type (employment vs partnership vs service agreements are all different)
     - Include extensive legal protections, boilerplate, definitions, and comprehensive coverage
     - Focus on quality, completeness, legal accuracy, and professional presentation
+    - NEVER EXPLAIN or display numbers of words in each section; simply produce the document as specified.
     """,
 }
 
@@ -241,6 +261,43 @@ FALLBACK_PROMPTS = {
     Is this information correct? If you need to make any changes, please let me know.
     """,
 }
+
+COMPLETION_DONE_PROMPT = """
+Analyze the provided text chunk to determine if it represents the conclusive end of a fully generated legal document. Return ONLY "True" if the chunk definitively indicates document completion, otherwise return "False".
+
+Consider these indicators of completion:
+- Presence of final signature blocks with parties' names and dates
+- "IN WITNESS WHEREOF" or similar execution clauses
+- Final dating and effective date statements
+- Language indicating the document is fully executed
+- Closing statements about copies and record retention
+- No trailing incomplete sentences or sections
+
+**Few-Shot Examples:**
+
+Example 1:
+Text: "END OF EMPLOYMENT CONTRACT\n\nThis Employment Contract has been prepared for the employment relationship between Insait LLC and Oluwafemi Ebenezer. Both parties are advised to retain a copy of this signed Agreement for their records."
+Response: True
+
+Example 2:
+Text: "IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.\n\nPARTY A:\n___________________________\nName: John Smith\nTitle: CEO\nDate: ______________\n\nPARTY B:\n___________________________\nName: Sarah Johnson\nTitle: Employee\nDate: ______________"
+Response: True
+
+Example 3:
+Text: "This Agreement shall be governed by and construed in accordance with the laws of the State of California. Any dispute arising under this Agreement shall be resolved through binding arbitration in San Francisco, California."
+Response: False
+
+Example 4:
+Text: "Executed as of this 15th day of March, 2024.\n\nCOMPANY:\n___________________________\nRobert Chen, President\n\nEMPLOYEE:\n___________________________\nMaria Gonzalez"
+Response: True
+
+Example 5:
+Text: "12.4 Severability. If any provision of this Agreement is held to be invalid or unenforceable, the remaining provisions shall continue in full force and effect. 12.5 Entire Agreement. This document constitutes the complete understanding between the parties and supersedes all prior agreements."
+Response: False
+
+
+Response (ONLY "True" or "False"):
+"""
 
 
 def get_system_prompt(phase: str) -> str:
