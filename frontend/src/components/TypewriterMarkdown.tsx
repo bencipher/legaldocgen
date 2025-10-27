@@ -20,22 +20,23 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
   const [scrollProgress, setScrollProgress] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const intervalRef = useRef<NodeJS.Timeout>();
+  const [targetContent, setTargetContent] = useState(''); // The content we're typing towards
   const contentRef = useRef<HTMLDivElement>(null);
-  const lastScrollHeight = useRef(0);
+  // COMMENTED OUT: lastScrollHeight not needed since auto-scroll removed
+  // const lastScrollHeight = useRef(0);
 
-  // Check if actual document content has started (more meaningful content than just whitespace)
-  useEffect(() => {
-    const trimmedContent = content.trim();
-    // Only consider it "started" if we have substantial content (more than just a few characters)
-    if (trimmedContent.length > 10 && !hasContentStarted) {
-      setHasContentStarted(true);
-    }
-    // Reset if content becomes empty (new generation starting)
-    if (trimmedContent.length === 0 && hasContentStarted) {
-      setHasContentStarted(false);
-    }
-  }, [content, hasContentStarted]);
+  // COMMENTED OUT: Old content started logic - moved to new effect below
+  // useEffect(() => {
+  //   const trimmedContent = content.trim();
+  //   // Only consider it "started" if we have substantial content (more than just a few characters)
+  //   if (trimmedContent.length > 10 && !hasContentStarted) {
+  //     setHasContentStarted(true);
+  //   }
+  //   // Reset if content becomes empty (new generation starting)
+  //   if (trimmedContent.length === 0 && hasContentStarted) {
+  //     setHasContentStarted(false);
+  //   }
+  // }, [content, hasContentStarted]);
 
   // Calculate scroll progress and page numbers
   const handleScroll = () => {
@@ -95,31 +96,47 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
   }, [isFullscreen]);
 
   // Auto-enter fullscreen when streaming starts (but allow user override)
+  // COMMENTED OUT: Auto-fullscreen behavior removed per user request
+  // useEffect(() => {
+  //   if (isStreaming && hasContentStarted && !isFullscreen) {
+  //     setIsFullscreen(true);
+  //   }
+  //   // Don't force fullscreen back on if user manually exited
+  // }, [isStreaming, hasContentStarted]); // Removed isFullscreen dependency to allow user exit
+
+  // Update target content when new content arrives - NEVER RESTART, ONLY CONTINUE (FIXED v2)
   useEffect(() => {
-    if (isStreaming && hasContentStarted && !isFullscreen) {
-      setIsFullscreen(true);
-    }
-    // Don't force fullscreen back on if user manually exited
-  }, [isStreaming, hasContentStarted]); // Removed isFullscreen dependency to allow user exit
-
-  // Typewriter effect
-  useEffect(() => {
-    if (!isStreaming || !content || !hasContentStarted) return;
-
-    const cleanedContent = cleanContentForDisplay(content);
-    if (currentIndex < cleanedContent.length) {
-      intervalRef.current = setTimeout(() => {
-        setDisplayedContent(cleanedContent.slice(0, currentIndex + 1));
-        setCurrentIndex(currentIndex + 1);
-      }, 1000 / speed);
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearTimeout(intervalRef.current);
+    if (content) {
+      const cleanedContent = cleanContentForDisplay(content);
+      
+      // Always set target content
+      setTargetContent(cleanedContent);
+      
+      // If this is the first time we're getting content
+      if (!hasContentStarted && cleanedContent.length > 10) {
+        setHasContentStarted(true);
+        setCurrentIndex(0);
+        setDisplayedContent('');
       }
-    };
-  }, [content, currentIndex, isStreaming, speed, hasContentStarted]);
+      // If content is growing and we're already typing, the typewriter will automatically catch up
+      // due to the targetContent.length dependency in the typewriter effect
+    }
+  }, [content, hasContentStarted]);
+
+  // Typewriter effect - continuously type towards target content (STABLE VERSION)
+  useEffect(() => {
+    if (!isStreaming || !targetContent || !hasContentStarted) return;
+    if (currentIndex >= targetContent.length) return; // Already finished
+
+    const timeoutId = setTimeout(() => {
+      const newIndex = currentIndex + 1;
+      const newDisplayed = targetContent.slice(0, newIndex);
+      setDisplayedContent(newDisplayed);
+      setCurrentIndex(newIndex);
+    }, 1000 / speed);
+
+    return () => clearTimeout(timeoutId);
+  }, [currentIndex, targetContent.length, isStreaming, hasContentStarted, speed]);
 
   // Reset when content changes significantly or streaming starts
   useEffect(() => {
@@ -127,16 +144,20 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
       setCurrentIndex(0);
       setDisplayedContent('');
       setHasContentStarted(false);
-      lastScrollHeight.current = 0;
+      setTargetContent(''); // Reset target content
+      // COMMENTED OUT: lastScrollHeight not needed since auto-scroll removed
+      // lastScrollHeight.current = 0;
     }
   }, [content]);
 
-  // Clean content for display (remove page break markers)
+  // Clean content for display (remove page break markers and normalize content)
   const cleanContentForDisplay = (rawContent: string) => {
     return rawContent
-      .replace(/---PAGE_BREAK---\s*/g, '')
+      .replace(/---PAGE_BREAK---\s*/g, '') // Remove page break markers
       .replace(/^\s*---\s*$/gm, '') // Remove standalone --- lines
-      .replace(/\n{3,}/g, '\n\n'); // Normalize excessive line breaks
+      .replace(/\n{3,}/g, '\n\n') // Normalize excessive line breaks
+      .replace(/\r\n/g, '\n') // Normalize line endings
+      .trim(); // Remove leading/trailing whitespace
   };
 
   // When streaming stops, show full content immediately
@@ -145,6 +166,7 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
       const cleanedContent = cleanContentForDisplay(content);
       setDisplayedContent(cleanedContent);
       setCurrentIndex(cleanedContent.length);
+      setTargetContent(cleanedContent); // Update target to match final content
     }
   }, [isStreaming, content]);
 
@@ -188,12 +210,13 @@ export const TypewriterMarkdown = ({ content, isStreaming, speed = 300 }: Typewr
                 Live Generation
               </span>
             )}
-            {isFullscreen && isStreaming && (
+            {/* COMMENTED OUT: Auto fullscreen text removed per user request */}
+            {/* {isFullscreen && isStreaming && (
               <span className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
                 • Auto Fullscreen
                 <span className="text-xs text-muted-foreground">(Press Esc to exit)</span>
               </span>
-            )}
+            )} */}
           </div>
           
           {/* Page indicator and progress */}
