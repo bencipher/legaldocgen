@@ -3,7 +3,9 @@ import { useToast } from './use-toast';
 
 export type BackendStatus = 'checking' | 'active' | 'waking' | 'error';
 
-const API_BASE = (import.meta as any)?.env?.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+console.log('Backend API Base URL:', API_BASE);
 
 export const useBackendStatus = () => {
   const [status, setStatus] = useState<BackendStatus>('checking');
