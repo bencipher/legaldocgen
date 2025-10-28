@@ -38,8 +38,6 @@ if not DEBUG:
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 CORS_ALLOWED_ORIGINS = [
     FRONTEND_URL,
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
 ]
 
 # In production, add your Vercel domain
